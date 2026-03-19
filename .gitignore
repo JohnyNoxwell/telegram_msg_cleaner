@@ -1,0 +1,27 @@
+# Личные данные и сессии Telethon
+*.session
+*.session-journal
+
+# Локальный конфиг и логи (не коммитить)
+config.json
+config.local.json
+delete_log.txt
+delete_history.log
+tg_message_cleaner_state.json
+tg_message_cleaner_state.json.tmp
+
+# Виртуальные окружения
+venv/
+.venv/
+
+# Артефакты Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Артефакты сборки
+dist/
+build/
+*.egg-info/
+

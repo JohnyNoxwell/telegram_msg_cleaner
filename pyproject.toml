@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tg-message-cleaner"
+version = "0.1.0"
+description = "CLI-утилита для удаления своих сообщений из чатов Telegram (на базе Telethon)."
+authors = [{ name = "Your Name" }]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "telethon>=1.36.0",
+]
+
+[project.scripts]
+tg-message-cleaner = "tg_message_cleaner.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tg_message_cleaner*"]
