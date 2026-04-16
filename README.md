@@ -82,21 +82,36 @@ pip install .
 
 Доступные команды (после `pip install .` или через `python -m`):
 
+#### 1. Удаление сообщений (clean)
+Репетиция (без реального удаления):
 ```bash
+tg-message-cleaner clean --dry-run --yes
+# или по-старому:
 tg-message-cleaner --dry-run --yes
 ```
 
 Реальное удаление:
-
 ```bash
-tg-message-cleaner --apply --yes
+tg-message-cleaner clean --apply --yes
 ```
 
-Если команда `tg-message-cleaner` недоступна в `PATH`, можно запускать без установки:
-
+#### 2. Экспорт сообщений (export)
+Инкрементально экспортирует историю сообщений пользователя в текстовый файл с сохранением хронологии и исходных (цитируемых) сообщений. По умолчанию все результаты сохраняются в папку `EXPORTED_USRS` и автоматически формируют имя файла.
 ```bash
-python -m tg_message_cleaner.cli --dry-run --yes
-python -m tg_message_cleaner.cli --apply --yes
+# Глобальный поиск: найдет все сообщения юзера и сохранит их в EXPORTED_USRS/Экспорт_Ник_12345678.txt
+tg-message-cleaner export --user-id 12345678
+
+# Экспорт сообщений из конкретной группы (по ID или username)
+tg-message-cleaner export --user-id "spammer_username" --chat-id -1001234567
+
+# Указать кастомное имя файла в той же папке
+tg-message-cleaner export --user-id 12345678 --out "my_export.txt"
+```
+
+Если команда `tg-message-cleaner` недоступна в `PATH`, можно запускать напрямую через Python:
+```bash
+python -m tg_message_cleaner.cli clean --dry-run --yes
+python -m tg_message_cleaner.cli export --user-id 12345678
 ```
 
 ### Возможности и улучшения

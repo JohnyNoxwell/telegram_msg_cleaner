@@ -13,7 +13,8 @@ tg_message_cleaner_state.json.tmp
 # Виртуальные окружения
 venv/
 .venv/
-
+.venv-test/
+EXPORTED_USRS/
 # Артефакты Python
 __pycache__/
 *.py[cod]
@@ -25,3 +26,5 @@ dist/
 build/
 *.egg-info/
 
+export.txt
+export_state.json
