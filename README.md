@@ -17,10 +17,10 @@ CLI-утилита на базе `telethon` для продвинутого уп
   
 * 📥 **Умный экспорт (`export`)**
   Параллельный поиск и загрузка истории сообщений заданного пользователя. Сохраняет хронологию, контекст бесед (реплаи) и историю изменения никнеймов. 
-  > ⚠️ **Важно:** Поиск происходит исключительно в тех чатах и группах, к которым имеет доступ ваш аккаунт. Все выгрузки автоматически складываются в папку `EXPORTED_USRS`.
+  > ⚠️ **Важно:** Поиск происходит исключительно в тех чатах и группах, к которым имеет доступ ваш аккаунт. Все выгрузки автоматически складываются в папку `PUBLIC_GROUPS`.
   
 * 🔄 **Массовое обновление (`update`)**
-  Инкрементальное обновление базы экспортированных пользователей в один клик. Скрипт сам считывает профили из `EXPORTED_USRS` и докачивает только свежие сообщения, ведя подробный `changelog.txt`. За счет многопоточности работает в 10 раз быстрее!
+  Инкрементальное обновление базы экспортированных пользователей в один клик. Скрипт сам считывает профили из `PUBLIC_GROUPS` и докачивает только свежие сообщения, ведя подробный `LOGS/changelog.txt`. За счет многопоточности работает в 10 раз быстрее!
 
 * ⏳ **Таймер самоуничтожения (`schedule`)**
   Позволяет скрипту в один клик превратиться в невидимого системного демона. Укажите интервал (например, каждые 12 часов), и он сам зарегистрируется в `launchd` / `cron` / `Windows Task Scheduler` для методичного удаления ваших сообщений в полном фоне!
@@ -54,6 +54,21 @@ CLI-утилита на базе `telethon` для продвинутого уп
 pip install .
 ```
 > 💡 **Примечание для Windows:** Если после установки команда `tg-msg-manager` не распознана, убедитесь, что путь к скриптам Python добавлен в переменную среды `PATH`, либо запускайте утилиту альтернативной командой `python -m tg_msg_manager.cli`
+
+**Шаг 4. Установка быстрых алиасов (опционально)**
+```bash
+tg-msg-manager setup
+```
+Эта команда автоматически пропишет в ваш терминал (`~/.zshrc`, `~/.bashrc` или создаст `.bat`-файлы на Windows) набор коротких команд с уже вшитыми правильными путями к Python и к вашему проекту. После этого вместо длинных команд вы сможете писать:
+
+| Алиас | Описание |
+|--------|----------|
+| `tg`   | 📖 Показать справку по всем алиасам |
+| `tgr`  | 🛡️ Репетиция удаления (dry-run) |
+| `tgd`  | 🧨 Боевое удаление сообщений |
+| `tge`  | 📥 Экспорт сообщений из групп (напр.: `tge 12345`) |
+| `tgu`  | 🔄 Обновить все экспорты |
+| `tgpm` | 💬 Архив личной переписки с медиа (напр.: `tgpm 12345`) |
 
 ---
 
@@ -101,10 +116,10 @@ A `telethon`-based CLI utility for advanced Telegram message management. Forget 
   
 * 📥 **Message Exporting (`export`)**
   Fast and highly concurrent scanning to download a specific user's chat history. It preserves chronological order, nickname histories, and the context of replied messages.
-  > ⚠️ **Note:** Exporting via user ID is strictly limited to the groups that your own account has joined. All generated text files are automatically saved into the `EXPORTED_USRS` directory.
+  > ⚠️ **Note:** Exporting via user ID is strictly limited to the groups that your own account has joined. All generated text files are automatically saved into the `PUBLIC_GROUPS` directory.
   
 * 🔄 **Mass Updater (`update`)**
-  One-click incremental update. The script automatically reads previously exported profiles from the `EXPORTED_USRS` folder and fetches only their newly written messages, logging all changes accurately to `changelog.txt`.
+  One-click incremental update. The script automatically reads previously exported profiles from the `PUBLIC_GROUPS` folder and fetches only their newly written messages, logging all changes accurately to `LOGS/changelog.txt`.
 
 * ⏳ **Self-Destruct Daemon (`schedule`)**
   Instantly metamorphosize the tool into an invisible background orchestrator. You specify an interval (e.g. every 12 hours) and it registers natively with `launchd` / `cron` / `Task Scheduler` to scrub your footprint automatically in complete stealth mode.
@@ -138,6 +153,21 @@ Navigate to the root directory (where `pyproject.toml` is located).
 pip install .
 ```
 > 💡 **Note for Windows users:** If the `tg-msg-manager` command is not recognized post-installation, ensure your Python scripts folder is added to your environment `PATH` variable, or run the tool via `python -m tg_msg_manager.cli`.
+
+**Step 4. Install quick aliases (Optional)**
+```bash
+tg-msg-manager setup
+```
+This command automatically configures short terminal aliases in your shell (`~/.zshrc`, `~/.bashrc`, or creates `.bat` files on Windows) with the correct paths to Python and your project directory already baked in. After this, instead of lengthy commands you can simply type:
+
+| Alias  | Description |
+|--------|-------------|
+| `tg`   | 📖 Show the aliases cheatsheet |
+| `tgr`  | 🛡️ Dry-run deletion rehearsal |
+| `tgd`  | 🧨 Real message deletion |
+| `tge`  | 📥 Export messages from groups (e.g. `tge 12345`) |
+| `tgu`  | 🔄 Update all exports |
+| `tgpm` | 💬 Archive a private chat with media (e.g. `tgpm 12345`) |
 
 ---
 

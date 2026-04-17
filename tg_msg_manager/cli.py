@@ -9,7 +9,7 @@ from .exporter import run_export
 
 def main() -> None:
     # Обратная совместимость: если первый аргумент не является командой и это старые флаги, подставляем 'clean'
-    if len(sys.argv) > 1 and not sys.argv[1] in ('clean', 'export', 'export-pm', 'update', 'schedule', '-h', '--help'):
+    if len(sys.argv) > 1 and not sys.argv[1] in ('clean', 'export', 'export-pm', 'update', 'schedule', 'setup', '-h', '--help'):
         # Если это старый формат вроде --apply или --dry-run
         sys.argv.insert(1, 'clean')
 
@@ -44,7 +44,7 @@ def main() -> None:
     export_parser.add_argument("--out", default=None, help="Путь до файла выгрузки (по умолчанию 'Экспорт_{Ник}_{ID}.txt').")
 
     # --- Подпарсер UPDATE ---
-    update_parser = subparsers.add_parser("update", help="Инкрементально обновить все собранные экспорты в папке EXPORTED_USRS")
+    update_parser = subparsers.add_parser("update", help="Инкрементально обновить все собранные экспорты в папке PUBLIC_GROUPS")
 
     # --- Подпарсер EXPORT-PM ---
     export_pm_parser = subparsers.add_parser("export-pm", help="Экспорт приватного диалога (текст + медиа)")
@@ -52,6 +52,9 @@ def main() -> None:
 
     # --- Подпарсер SCHEDULE ---
     schedule_parser = subparsers.add_parser("schedule", help="Настроить и запустить фоновый демон авто-очистки (OS Scheduler)")
+
+    # --- Подпарсер SETUP ---
+    setup_parser = subparsers.add_parser("setup", help="Установить быстрые алиасы (tgr, tgd, tge, tgu, tgpm, tg) в ваш терминал")
 
     args = parser.parse_args()
 
@@ -95,6 +98,9 @@ def main() -> None:
     elif command == "schedule":
         from .scheduler import run_scheduler
         run_scheduler(config_dir=config_dir)
+    elif command == "setup":
+        from .setup import run_setup
+        run_setup(config_dir=config_dir)
 
 
 if __name__ == "__main__":

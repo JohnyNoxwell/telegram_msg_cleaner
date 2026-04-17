@@ -372,7 +372,7 @@ async def export_messages_async(settings: Settings, target_user_identifier: str,
         await client.disconnect()
         return
 
-    export_dir = "EXPORTED_USRS"
+    export_dir = "PUBLIC_GROUPS"
     os.makedirs(export_dir, exist_ok=True)
 
     if not output_file:
@@ -442,9 +442,9 @@ async def export_messages_async(settings: Settings, target_user_identifier: str,
 
 
 async def export_update_async(settings: Settings):
-    export_dir = "EXPORTED_USRS"
+    export_dir = "PUBLIC_GROUPS"
     if not os.path.exists(export_dir):
-        print("Папка EXPORTED_USRS не найдена. Нечего обновлять.")
+        print("Папка PUBLIC_GROUPS не найдена. Нечего обновлять.")
         return
 
     user_files = {} 
@@ -458,7 +458,7 @@ async def export_update_async(settings: Settings):
             user_files[u_id] = os.path.join(export_dir, filename)
 
     if not user_files:
-        print("В папке EXPORTED_USRS нет подходящих файлов формата _ID.txt для обновления.")
+        print("В папке PUBLIC_GROUPS нет подходящих файлов формата _ID.txt для обновления.")
         return
 
     print(f"Найдено {len(user_files)} пользователей для массового обновления.")
@@ -534,7 +534,7 @@ async def export_update_async(settings: Settings):
             changelog_lines.extend(log_block)
 
     if changelog_lines:
-        changelog_path = os.path.join(export_dir, "changelog.txt")
+        changelog_path = os.path.join("LOGS", "changelog.txt")
         now_str = datetime.now().strftime("%Y-%m-%d][%H:%M:%S")
         with open(changelog_path, "a", encoding="utf-8") as f:
             f.write(f"--- ОБНОВЛЕНИЕ ОТ {now_str} ---\n")

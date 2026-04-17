@@ -147,6 +147,21 @@ def _get_file_size(msg: Message) -> int:
     return 0
 
 
+def _get_file_unique_id(msg: Message) -> Optional[str]:
+    """
+    Извлекает file_unique_id из медиа сообщения.
+    Этот ID одинаков для абсолютно идентичных файлов (одна и та же GIF, отправленная 50 раз).
+    """
+    if msg.photo:
+        # У фото уникальный ID хранится в последнем (самом большом) размере
+        if hasattr(msg.photo, 'id'):
+            return f"photo_{msg.photo.id}"
+    if msg.document:
+        if hasattr(msg.document, 'id'):
+            return f"doc_{msg.document.id}"
+    return None
+
+
 def _build_media_filename(msg: Message, category: str) -> str:
     """
     Формат: YYYY-MM-DD_HH-MM_msgID.ext
@@ -255,6 +270,13 @@ async def export_pm_async(
     # ── Стейт-менеджер ──
     state_manager = PMStateManager(os.path.join(settings.config_dir, PM_STATE_FILE))
     last_msg_id = state_manager.get_last_msg_id(target_user.id)
+
+    # Если папка была удалена пользователем — сбрасываем стейт и качаем с нуля
+    if last_msg_id > 0 and not os.path.exists(chat_log_path):
+        print("⚠️  Папка экспорта не найдена — сброс прогресса, качаем заново.")
+        last_msg_id = 0
+        state_manager.update_last_msg_id(target_user.id, 0)
+
     if last_msg_id > 0:
         print(f"🔄 Инкрементальный режим: докачиваем сообщения новее ID {last_msg_id}")
 
@@ -267,7 +289,11 @@ async def export_pm_async(
     total_text = 0
     total_media = 0
     total_skipped = 0
+    total_duplicates = 0
     highest_msg_id = last_msg_id
+
+    # Дедупликация: file_unique_id -> относительный путь к первому скачанному экземпляру
+    seen_files: Dict[str, str] = {}
 
     # Ставим буфер текстовых строк, чтобы сбрасывать на диск пачками
     log_buffer = []
@@ -307,26 +333,44 @@ async def export_pm_async(
         # -- Медиа-роутер --
         media_note = None
         category = _classify_media(msg)
+        is_my_message = (msg.sender_id == me.id)
 
-        if category:
+        if category and is_my_message:
+            # Свои медиа не скачиваем — только помечаем в логе
+            label = _media_label(category)
+            media_note = f"<Ваше {label}>"
+        elif category:
             file_size = _get_file_size(msg)
             if file_size > max_file_size:
                 size_str = _human_size(file_size)
                 media_note = f"<Файл слишком большой ({size_str}), пропущен>"
                 total_skipped += 1
             else:
-                filename = _build_media_filename(msg, category)
-                dest_path = os.path.join(media_dir, category, filename)
+                # Проверка дубликатов по file_unique_id
+                unique_id = _get_file_unique_id(msg)
+                if unique_id and unique_id in seen_files:
+                    # Дубликат — не качаем, ссылаемся на оригинал
+                    original_path = seen_files[unique_id]
+                    label = _media_label(category)
+                    media_note = f"<Дубликат {label}, см. оригинал: {original_path}>"
+                    total_duplicates += 1
+                else:
+                    filename = _build_media_filename(msg, category)
+                    dest_path = os.path.join(media_dir, category, filename)
+                    rel_path = os.path.join("media", category, filename)
 
-                # Не перекачиваем уже скачанный файл
-                if not os.path.exists(dest_path):
-                    download_tasks.append(
-                        asyncio.create_task(_download_one(msg, category, dest_path))
-                    )
-                
-                rel_path = os.path.join("media", category, filename)
-                label = _media_label(category)
-                media_note = f"<Прикреплено {label}: {rel_path}>"
+                    # Запоминаем unique_id -> путь
+                    if unique_id:
+                        seen_files[unique_id] = rel_path
+
+                    # Не перекачиваем уже скачанный файл
+                    if not os.path.exists(dest_path):
+                        download_tasks.append(
+                            asyncio.create_task(_download_one(msg, category, dest_path))
+                        )
+                    
+                    label = _media_label(category)
+                    media_note = f"<Прикреплено {label}: {rel_path}>"
 
         # -- Форматируем текстовую строку --
         log_line = _format_log_line(msg, sender_name, sender_id, sender_uname, media_note)
@@ -364,6 +408,8 @@ async def export_pm_async(
     print(f"✅ Экспорт приватного диалога завершён!")
     print(f"   📝 Сообщений в логе: {total_text}")
     print(f"   📥 Медиафайлов загружено: {total_media}")
+    if total_duplicates:
+        print(f"   ♻️  Дубликатов пропущено: {total_duplicates}")
     if total_skipped:
         print(f"   ⏭️  Пропущено (превышение {_human_size(max_file_size)}): {total_skipped}")
     print(f"   📂 Результат: {user_dir}")

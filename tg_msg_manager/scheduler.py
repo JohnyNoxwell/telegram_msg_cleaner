@@ -79,8 +79,8 @@ def update_config_exclusions(config_dir: str):
 
 def install_macos(python_exe: str, work_dir: str, interval_hours: int):
     interval_seconds = interval_hours * 3600
-    log_path = os.path.join(work_dir, "autoclean_daemon.log")
-    err_path = os.path.join(work_dir, "autoclean_daemon_err.log")
+    log_path = os.path.join(work_dir, "LOGS", "autoclean_daemon.log")
+    err_path = os.path.join(work_dir, "LOGS", "autoclean_daemon_err.log")
 
     plist_content = MAC_PLIST_TEMPLATE.format(
         python_executable=python_exe,
@@ -121,7 +121,7 @@ def install_linux(python_exe: str, work_dir: str, interval_hours: int):
         days = interval_hours // 24
         cron_time = f"0 0 */{days} * *"
 
-    command = f"cd \"{work_dir}\" && {python_exe} -m tg_msg_manager.cli clean --apply --yes >> \"{work_dir}/autoclean_daemon.log\" 2>&1"
+    command = f"cd \"{work_dir}\" && {python_exe} -m tg_msg_manager.cli clean --apply --yes >> \"{work_dir}/LOGS/autoclean_daemon.log\" 2>&1"
     cron_job = f"{cron_time} {command}"
 
     try:
@@ -139,7 +139,7 @@ def install_linux(python_exe: str, work_dir: str, interval_hours: int):
         
         print("✅ Задача успешно добавлена в crontab Linux!")
         print(f"Расписание: {cron_time}")
-        print(f"Логи: {work_dir}/autoclean_daemon.log")
+        print(f"Логи: {work_dir}/LOGS/autoclean_daemon.log")
     except Exception as e:
         print(f"⚠️ Ошибка настройки cron: {e}")
 

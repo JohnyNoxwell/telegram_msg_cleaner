@@ -27,7 +27,7 @@ python -m tg_msg_manager.cli clean --dry-run
 ```
 
 ### 📥 2. Режим экспорта (`export`)
-Ищет все сообщения заданного пользователя и выкачивает их в удобный для чтения текстовый файл, сохраняя хронологию и вложенные ответы (replies). Поиск выполняется **в 10 потоков**, обеспечивая сверхбыструю выгрузку в папку `EXPORTED_USRS`.
+Ищет все сообщения заданного пользователя и выкачивает их в удобный для чтения текстовый файл, сохраняя хронологию и вложенные ответы (replies). Поиск выполняется **в 10 потоков**, обеспечивая сверхбыструю выгрузку в папку `PUBLIC_GROUPS`.
 
 **Флаги и Аргументы:**
 * `--user-id` *(Обязательный)* — ID или username (ник) целевого пользователя.
@@ -44,7 +44,7 @@ tg-msg-manager export --user-id "spammer22" --chat-id -100123456789
 ```
 
 ### 🔄 3. Режим обновления (`update`)
-Магическая команда. Автоматически сканирует вашу папку `EXPORTED_USRS` и **параллельно** загружает *новые* сообщения для **каждого** ранее выгруженного пользователя. Автоматически фиксирует смену никнеймов и записывает краткий отчет проделанной работы в `changelog.txt`.
+Магическая команда. Автоматически сканирует вашу папку `PUBLIC_GROUPS` и **параллельно** загружает *новые* сообщения для **каждого** ранее выгруженного пользователя. Автоматически фиксирует смену никнеймов и записывает краткий отчет проделанной работы в `LOGS/changelog.txt`.
 
 **Пример использования:**
 ```bash
@@ -115,7 +115,7 @@ python -m tg_msg_manager.cli clean --dry-run
 ```
 
 ### 📥 2. Export Mode (`export`)
-Locates a target user's entire footprint and extracts their messages into elegantly formatted text files, complete with chronological order and embedded replies. Lookups are executed with a **concurrency pool of 10** for ultra-fast speeds, saving all data to an auto-created `EXPORTED_USRS` folder.
+Locates a target user's entire footprint and extracts their messages into elegantly formatted text files, complete with chronological order and embedded replies. Lookups are executed with a **concurrency pool of 10** for ultra-fast speeds, saving all data to an auto-created `PUBLIC_GROUPS` folder.
 
 **Flags & Arguments:**
 * `--user-id` *(Required)* — The numeric ID or username of the targeted entity.
@@ -132,7 +132,7 @@ tg-msg-manager export --user-id "spammer22" --chat-id -100123456789
 ```
 
 ### 🔄 3. Update Mode (`update`)
-A magic bullet command. It automatically reads your `EXPORTED_USRS` cache and performs a **highly concurrent** fetch of only the *newest* messages for every previously extracted user. It also dynamically tracks nickname changes into the document headers and generates a `changelog.txt` summary file upon completion.
+A magic bullet command. It automatically reads your `PUBLIC_GROUPS` cache and performs a **highly concurrent** fetch of only the *newest* messages for every previously extracted user. It also dynamically tracks nickname changes into the document headers and generates a `LOGS/changelog.txt` summary file upon completion.
 
 **Examples:**
 ```bash
