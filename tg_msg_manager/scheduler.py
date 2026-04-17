@@ -32,6 +32,38 @@ MAC_PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 """
 
+MAC_CALENDAR_PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tgmsgmanager.autoclean</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python_executable}</string>
+        <string>-m</string>
+        <string>tg_msg_manager.cli</string>
+        <string>clean</string>
+        <string>--apply</string>
+        <string>--yes</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{working_dir}</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>{hour}</integer>
+        <key>Minute</key>
+        <integer>{minute}</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>{log_path}</string>
+    <key>StandardErrorPath</key>
+    <string>{err_path}</string>
+</dict>
+</plist>
+"""
+
 def update_config_exclusions(config_dir: str):
     config_path = _config_path(config_dir)
     if not os.path.exists(config_path):
@@ -77,18 +109,30 @@ def update_config_exclusions(config_dir: str):
         print("Конфиг оставлен без изменений.")
 
 
-def install_macos(python_exe: str, work_dir: str, interval_hours: int):
-    interval_seconds = interval_hours * 3600
+def install_macos(python_exe: str, work_dir: str, interval_hours: int = 12, fixed_time: dict = None):
     log_path = os.path.join(work_dir, "LOGS", "autoclean_daemon.log")
     err_path = os.path.join(work_dir, "LOGS", "autoclean_daemon_err.log")
 
-    plist_content = MAC_PLIST_TEMPLATE.format(
-        python_executable=python_exe,
-        working_dir=work_dir,
-        interval_seconds=interval_seconds,
-        log_path=log_path,
-        err_path=err_path
-    )
+    if fixed_time:
+        plist_content = MAC_CALENDAR_PLIST_TEMPLATE.format(
+            python_executable=python_exe,
+            working_dir=work_dir,
+            hour=fixed_time["hour"],
+            minute=fixed_time["minute"],
+            log_path=log_path,
+            err_path=err_path
+        )
+        mode_desc = f"ежедневно в {fixed_time['hour']:02d}:{fixed_time['minute']:02d}"
+    else:
+        interval_seconds = interval_hours * 3600
+        plist_content = MAC_PLIST_TEMPLATE.format(
+            python_executable=python_exe,
+            working_dir=work_dir,
+            interval_seconds=interval_seconds,
+            log_path=log_path,
+            err_path=err_path
+        )
+        mode_desc = f"каждые {interval_hours} ч."
 
     plist_dir = os.path.expanduser("~/Library/LaunchAgents")
     os.makedirs(plist_dir, exist_ok=True)
@@ -104,62 +148,65 @@ def install_macos(python_exe: str, work_dir: str, interval_hours: int):
     res = subprocess.run(["launchctl", "load", plist_path], capture_output=True)
     
     if res.returncode == 0:
-        print("✅ Демон успешно зарегистрирован и запущен на macOS!")
+        print(f"✅ Демон успешно зарегистрирован ({mode_desc}) и запущен на macOS!")
         print(f"Логи будут писаться в:\n- {log_path}\n- {err_path}")
     else:
         print("⚠️ Ошибка регистрации демона. Ошибка:", res.stderr.decode('utf-8', errors='ignore'))
 
 
-def install_linux(python_exe: str, work_dir: str, interval_hours: int):
-    # Генерация cron строки
-    # каждые N часов (0 */N * * *)
-    if interval_hours == 1:
-        cron_time = "0 * * * *"
-    elif interval_hours < 24:
-        cron_time = f"0 */{interval_hours} * * *"
+def install_linux(python_exe: str, work_dir: str, interval_hours: int = 12, fixed_time: dict = None):
+    if fixed_time:
+        cron_time = f"{fixed_time['minute']} {fixed_time['hour']} * * *"
+        mode_desc = f"ежедневно в {fixed_time['hour']:02d}:{fixed_time['minute']:02d}"
     else:
-        days = interval_hours // 24
-        cron_time = f"0 0 */{days} * *"
+        if interval_hours == 1:
+            cron_time = "0 * * * *"
+        elif interval_hours < 24:
+            cron_time = f"0 */{interval_hours} * * *"
+        else:
+            days = interval_hours // 24
+            cron_time = f"0 0 */{days} * *"
+        mode_desc = f"каждые {interval_hours} ч."
 
     command = f"cd \"{work_dir}\" && {python_exe} -m tg_msg_manager.cli clean --apply --yes >> \"{work_dir}/LOGS/autoclean_daemon.log\" 2>&1"
     cron_job = f"{cron_time} {command}"
 
     try:
-        # Получаем текущий crontab (может вернуть ошибку 1, если cron пуст)
         res = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
         current_cron = res.stdout if res.returncode == 0 else ""
 
-        # Убираем старую задачу, если есть
         new_cron_lines = [line for line in current_cron.splitlines() if "tg_msg_manager.cli clean" not in line]
         new_cron_lines.append(cron_job)
         
-        # Добавляем в crontab
         cron_input = "\n".join(new_cron_lines) + "\n"
         subprocess.run(["crontab", "-"], input=cron_input, text=True, check=True)
         
-        print("✅ Задача успешно добавлена в crontab Linux!")
+        print(f"✅ Задача успешно добавлена в crontab Linux ({mode_desc})!")
         print(f"Расписание: {cron_time}")
         print(f"Логи: {work_dir}/LOGS/autoclean_daemon.log")
     except Exception as e:
         print(f"⚠️ Ошибка настройки cron: {e}")
 
 
-def install_windows(python_exe: str, work_dir: str, interval_hours: int):
-    interval_mins = interval_hours * 60
+def install_windows(python_exe: str, work_dir: str, interval_hours: int = 12, fixed_time: dict = None):
     task_name = "TGMsgManager_AutoClean"
-    
-    # Команда, которая не открывает терминал (через pythonw, если возможно, но используем текущий sys.executable)
-    # Для Windows лучше запускать из .bat или просто аргументом
     command = f"{python_exe}"
     args = f"-m tg_msg_manager.cli clean --apply --yes"
+    full_tr = f"\"{command}\" {args}"
 
-    print("Создаю задачу в Планировщике Windows (schtasks)...")
-    try:
-        # Для schtasks мы указываем /TR как исполняемый вызов
-        full_tr = f"\"{command}\" {args}"
-        
-        # schtasks /Create /SC MINUTE /MO 60 /TN TGMsgManager_AutoClean /TR "..." 
-        # /F - перезаписать если есть
+    if fixed_time:
+        st_time = f"{fixed_time['hour']:02d}:{fixed_time['minute']:02d}"
+        sch_cmd = [
+            "schtasks", "/Create", 
+            "/SC", "DAILY", 
+            "/ST", st_time,
+            "/TN", task_name,
+            "/TR", full_tr,
+            "/F"
+        ]
+        mode_desc = f"ежедневно в {st_time}"
+    else:
+        interval_mins = interval_hours * 60
         sch_cmd = [
             "schtasks", "/Create", 
             "/SC", "MINUTE", 
@@ -168,12 +215,14 @@ def install_windows(python_exe: str, work_dir: str, interval_hours: int):
             "/TR", full_tr,
             "/F"
         ]
-        
+        mode_desc = f"каждые {interval_hours} ч."
+
+    print("Создаю задачу в Планировщике Windows (schtasks)...")
+    try:
         res = subprocess.run(sch_cmd, capture_output=True, text=True)
         if res.returncode == 0:
-            print("✅ Задача успешно добавлена в Планировщик Windows!")
+            print(f"✅ Задача успешно добавлена в Планировщик Windows ({mode_desc})!")
             print(f"Имя задачи: {task_name}")
-            print("Она будет исполняться в фоновом режиме.")
         else:
             print("⚠️ Ошибка Windows schtasks:")
             print(res.stderr)
@@ -182,16 +231,40 @@ def install_windows(python_exe: str, work_dir: str, interval_hours: int):
 
 
 def run_scheduler(config_dir: str):
-    print("=== Установка авто-удаления сообщений (Auto-Clean) ===")
+    print("=== Установка авто-удаления сообщений (Auto-Clean) ===\n")
     
-    # 1. Интервал
-    ans = input("Введите интервал запуска в часах (по умолчанию 12): ").strip()
+    print("Выберите режим расписания:")
+    print(" 1. С интервалом (например, каждые 12 часов)")
+    print(" 2. В конкретное время (например, каждый день в 05:00)")
+    
+    mode = input("Ваш выбор (1 или 2, по умолчанию 1): ").strip()
+    
     interval_hours = 12
-    if ans:
-        if ans.isdigit() and int(ans) > 0:
-            interval_hours = int(ans)
-        else:
-            print("Некорректный ввод. Установлено по умолчанию: 12.")
+    fixed_time = None
+    
+    if mode == "2":
+        time_str = input("Введите время в формате ЧЧ:ММ (24-часовой формат, по умолчанию 05:00): ").strip()
+        if not time_str:
+            time_str = "05:00"
+        
+        try:
+            if ":" not in time_str:
+                raise ValueError
+            h_str, m_str = time_str.split(":")
+            h, m = int(h_str), int(m_str)
+            if not (0 <= h <= 23 and 0 <= m <= 59):
+                raise ValueError
+            fixed_time = {"hour": h, "minute": m}
+        except ValueError:
+            print("Некорректный формат времени. Будет использовано 05:00.")
+            fixed_time = {"hour": 5, "minute": 0}
+    else:
+        ans = input("Введите интервал запуска в часах (по умолчанию 12): ").strip()
+        if ans:
+            if ans.isdigit() and int(ans) > 0:
+                interval_hours = int(ans)
+            else:
+                print("Некорректный ввод. Установлено по умолчанию: 12.")
 
     # 2. Исключения (обновление config_dir)
     update_config_exclusions(config_dir)
@@ -203,14 +276,19 @@ def run_scheduler(config_dir: str):
 
     print(f"\nРегистрация демона на платформе: {platform}")
     if platform == "darwin":
-        install_macos(python_exe, work_dir, interval_hours)
+        install_macos(python_exe, work_dir, interval_hours, fixed_time)
     elif platform.startswith("linux"):
-        install_linux(python_exe, work_dir, interval_hours)
+        install_linux(python_exe, work_dir, interval_hours, fixed_time)
     elif platform == "win32":
-        install_windows(python_exe, work_dir, interval_hours)
+        install_windows(python_exe, work_dir, interval_hours, fixed_time)
     else:
         print(f"⚠️ Ваша ОС ({platform}) не поддерживается для автоматической установки.")
         print("Вы можете вручную добавить команду в ваш планировщик:")
+        if fixed_time:
+            time_desc = f"{fixed_time['hour']:02d}:{fixed_time['minute']:02d}"
+            print(f"Каждый день в {time_desc}:")
+        else:
+            print(f"Каждые {interval_hours} ч.:")
         print(f"cd \"{work_dir}\" && {python_exe} -m tg_msg_manager.cli clean --apply --yes")
 
     print("\nНастройка завершена!")

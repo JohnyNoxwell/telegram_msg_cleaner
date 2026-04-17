@@ -227,6 +227,10 @@ async def export_pm_async(
     target_user_identifier: str,
     max_file_size: int = MAX_FILE_SIZE_BYTES,
 ):
+    def ts_print(msg):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{now}] {msg}")
+
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
     await client.start()
     me = await client.get_me()
@@ -240,11 +244,11 @@ async def export_pm_async(
             target_user = await client.get_entity(target_user_identifier)
 
         if not isinstance(target_user, User):
-            print("⚠️  Указанный ID принадлежит группе, а не пользователю. Для групп используйте команду export.")
+            ts_print("⚠️  Указанный ID принадлежит группе, а не пользователю. Для групп используйте команду export.")
             await client.disconnect()
             return
     except Exception as e:
-        print(f"⚠️  Ошибка при поиске пользователя: {e}")
+        ts_print(f"⚠️  Ошибка при поиске пользователя: {e}")
         await client.disconnect()
         return
 

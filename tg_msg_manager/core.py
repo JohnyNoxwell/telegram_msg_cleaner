@@ -209,19 +209,23 @@ def message_passes_filters(msg, me_id: int, settings: Settings, min_date: Option
 
 
 async def delete_my_messages(settings: Settings, state_path: Optional[str] = None) -> None:
+    def ts_print(msg):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{now}] {msg}")
+
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
     await client.start()
 
     me = await client.get_me()
     my_id = me.id
 
-    print(f"Вошли как: {me.first_name} (id={my_id})")
+    ts_print(f"Вошли как: {me.first_name} (id={my_id})")
     append_log(settings, f"Запуск. Пользователь: {me.first_name} ({my_id}), dry_run={settings.dry_run}")
 
     min_date: Optional[datetime] = None
     if settings.min_date_days_ago is not None:
         min_date = datetime.now(timezone.utc) - timedelta(days=settings.min_date_days_ago)
-        print(f"Будут затронуты сообщения новее: {min_date}")
+        ts_print(f"Будут затронуты сообщения новее: {min_date}")
 
     total_deleted = 0
     total_candidates = 0
@@ -266,7 +270,7 @@ async def delete_my_messages(settings: Settings, state_path: Optional[str] = Non
             continue
 
         chat_index += 1
-        print(f"\nЧат #{chat_index}: {title} (id={chat_id})")
+        ts_print(f"\nЧат #{chat_index}: {title} (id={chat_id})")
         append_log(settings, f"Обработка чата: {title} (id={chat_id})")
 
         candidates: List[int] = []
@@ -301,24 +305,24 @@ async def delete_my_messages(settings: Settings, state_path: Optional[str] = Non
                 total_deleted += len(batch)
                 await asyncio.sleep(delay)
             except FloodWaitError as e:
-                print(f"FloodWait: пауза {e.seconds} секунд...")
+                ts_print(f"FloodWait: пауза {e.seconds} секунд...")
                 append_log(settings, f"FloodWait в чате {title}: {e.seconds} секунд")
                 # Не блокируем event-loop, чтобы Telethon мог корректно обслуживать I/O.
                 await asyncio.sleep(e.seconds)
                 delay = min(delay * 2, settings.max_delay_sec)
             except Exception as e:
-                print(f"Ошибка при удалении в чате {title}: {e}")
+                ts_print(f"Ошибка при удалении в чате {title}: {e}")
                 append_log(settings, f"Ошибка при удалении в чате {title}: {e}")
                 chat_had_error = True
 
-        print(f"Удалено сообщений в чате '{title}': {deleted_in_chat}")
+        ts_print(f"Удалено сообщений в чате '{title}': {deleted_in_chat}")
         append_log(settings, f"Чат {title}: удалено {deleted_in_chat}")
 
     await client.disconnect()
 
-    print("\n=== Итог ===")
-    print(f"Диалогов обработано: {total_dialogs}, групп/каналов: {eligible_dialogs}")
-    print(f"Всего подходящих сообщений: {total_candidates}")
+    ts_print("\n=== Итог ===")
+    ts_print(f"Диалогов обработано: {total_dialogs}, групп/каналов: {eligible_dialogs}")
+    ts_print(f"Всего подходящих сообщений: {total_candidates}")
     if eligible_dialogs == 0:
         print("Похоже, фильтр групп/каналов отфильтровал все диалоги. Примеры:")
         for s in debug_samples:
@@ -326,9 +330,9 @@ async def delete_my_messages(settings: Settings, state_path: Optional[str] = Non
                 f"- {s['title']} (id={s['id']}), is_group={s['is_group']}, is_channel={s['is_channel']}, entity_type={s['entity_type']}"
             )
     if settings.dry_run:
-        print("Это был DRY-RUN, ничего не удалено. Измени 'dry_run' в config.json на false для реального удаления.")
+        ts_print("Это был DRY-RUN, ничего не удалено. Измени 'dry_run' в config.json на false для реального удаления.")
     else:
-        print(f"Всего удалено сообщений: {total_deleted}")
+        ts_print(f"Всего удалено сообщений: {total_deleted}")
 
     append_log(
         settings,
@@ -346,18 +350,22 @@ def run_from_config(
 ) -> None:
     settings = load_settings(config_dir=config_dir)
 
+    def ts_print(msg):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{now}] {msg}")
+
     # CLI переопределения
     if dry_run_override is not None:
         settings.dry_run = dry_run_override
 
     resolved_state_path = _state_path(config_dir, state_path)
 
-    print("Настройки загружены:")
-    print(f"  dry_run: {settings.dry_run}")
-    print(f"  min_date_days_ago: {settings.min_date_days_ago}")
-    print(f"  include_chats: {settings.include_chats}")
-    print(f"  exclude_chats: {settings.exclude_chats}")
-    print(f"  resume: {resume}")
+    ts_print("Настройки загружены:")
+    ts_print(f"  dry_run: {settings.dry_run}")
+    ts_print(f"  min_date_days_ago: {settings.min_date_days_ago}")
+    ts_print(f"  include_chats: {settings.include_chats}")
+    ts_print(f"  exclude_chats: {settings.exclude_chats}")
+    ts_print(f"  resume: {resume}")
 
     if not assume_yes:
         answer = input("Продолжить с этими настройками? [y/N]: ").strip().lower()

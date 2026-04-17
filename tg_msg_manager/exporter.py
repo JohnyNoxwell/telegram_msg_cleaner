@@ -401,7 +401,7 @@ async def export_messages_async(settings: Settings, target_user_identifier: str,
         print("Собираем список всех групп/каналов...")
         dialogs_to_check = await _get_all_dialogs(client)
 
-    print(f"Количество чатов для проверки: {len(dialogs_to_check)}")
+    ts_print(f"Количество чатов для проверки: {len(dialogs_to_check)}")
     
     state_manager = ExportStateManager(os.path.join(settings.config_dir, "export_state.json"))
     
@@ -442,9 +442,13 @@ async def export_messages_async(settings: Settings, target_user_identifier: str,
 
 
 async def export_update_async(settings: Settings):
+    def ts_print(msg):
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{now}] {msg}")
+
     export_dir = "PUBLIC_GROUPS"
     if not os.path.exists(export_dir):
-        print("Папка PUBLIC_GROUPS не найдена. Нечего обновлять.")
+        ts_print("Папка PUBLIC_GROUPS не найдена. Нечего обновлять.")
         return
 
     user_files = {} 
@@ -458,15 +462,15 @@ async def export_update_async(settings: Settings):
             user_files[u_id] = os.path.join(export_dir, filename)
 
     if not user_files:
-        print("В папке PUBLIC_GROUPS нет подходящих файлов формата _ID.txt для обновления.")
+        ts_print("В папке PUBLIC_GROUPS нет подходящих файлов формата _ID.txt для обновления.")
         return
 
-    print(f"Найдено {len(user_files)} пользователей для массового обновления.")
+    ts_print(f"Найдено {len(user_files)} пользователей для массового обновления.")
     
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
     await client.start()
     
-    print("Собираем список всех групп/каналов один раз...")
+    ts_print("Собираем список всех групп/каналов один раз...")
     dialogs_to_check = await _get_all_dialogs(client)
     print(f"Количество чатов для проверки: {len(dialogs_to_check)}\n")
 
@@ -518,7 +522,7 @@ async def export_update_async(settings: Settings):
                     if latest_overall_date is None or latest_date > latest_overall_date:
                         latest_overall_date = latest_date
         
-        print(f"    Завершено. Новых сообщений для {target_author_name}: {total_new_msgs}")
+        ts_print(f"    Завершено. Новых сообщений для {target_author_name}: {total_new_msgs}")
         
         if total_new_msgs > 0 or nick_changed:
             u_str = f"@{target_author_uname}" if target_author_uname else "null"
@@ -540,9 +544,9 @@ async def export_update_async(settings: Settings):
             f.write(f"--- ОБНОВЛЕНИЕ ОТ {now_str} ---\n")
             f.write("\n".join(changelog_lines))
             f.write("\n")
-        print(f"\nЗапись в changelog.txt выполнена.")
+        ts_print(f"Обновление завершено. Чейнджлог сохранен: {changelog_path}")
     else:
-        print("\nНет новых сообщений или изменений никнеймов ни по одному пользователю. Changelog не записывался.")
+        ts_print("Нет новых сообщений или изменений никнеймов ни по одному пользователю. Changelog не записывался.")
 
     await client.disconnect()
 
