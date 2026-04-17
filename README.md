@@ -47,7 +47,7 @@ CLI-утилита на базе `telethon` для продвинутого уп
 ```bash
 pip install .
 ```
-> 💡 **Примечание для Windows:** Если после установки команда `tg-message-cleaner` не распознана, убедитесь, что путь к скриптам Python добавлен в переменную среды `PATH`, либо запускайте утилиту альтернативной командой `python -m tg_message_cleaner.cli`
+> 💡 **Примечание для Windows:** Если после установки команда `tg-msg-manager` не распознана, убедитесь, что путь к скриптам Python добавлен в переменную среды `PATH`, либо запускайте утилиту альтернативной командой `python -m tg_msg_manager.cli`
 
 ---
 
@@ -70,13 +70,13 @@ pip install .
 **Примеры:**
 ```bash
 # Репетиция удаления (посмотрит сколько удалит, но ничего не тронет)
-tg-message-cleaner clean --dry-run --yes
+tg-msg-manager clean --dry-run --yes
 
 # Экспорт всей истории сообщений спамера во всех ваших общих чатах
-tg-message-cleaner export --user-id 1234567
+tg-msg-manager export --user-id 1234567
 
 # Быстрое инкрементальное обновление всех собранных текстовых файлов
-tg-message-cleaner update
+tg-msg-manager update
 ```
 
 ---
@@ -125,7 +125,7 @@ Navigate to the root directory (where `pyproject.toml` is located).
 ```bash
 pip install .
 ```
-> 💡 **Note for Windows users:** If the `tg-message-cleaner` command is not recognized post-installation, ensure your Python scripts folder is added to your environment `PATH` variable, or run the tool via `python -m tg_message_cleaner.cli`.
+> 💡 **Note for Windows users:** If the `tg-msg-manager` command is not recognized post-installation, ensure your Python scripts folder is added to your environment `PATH` variable, or run the tool via `python -m tg_msg_manager.cli`.
 
 ---
 
@@ -148,11 +148,11 @@ For an exhaustive and comprehensive guide on commands and flags, please refer to
 **Examples:**
 ```bash
 # Dry-run deletion
-tg-message-cleaner clean --dry-run --yes
+tg-msg-manager clean --dry-run --yes
 
 # Export all messages of a spammer from all your common chats
-tg-message-cleaner export --user-id 1234567
+tg-msg-manager export --user-id 1234567
 
 # Blazing fast incremental update of all locally exported users
-tg-message-cleaner update
+tg-msg-manager update
 ```

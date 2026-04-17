@@ -1,7 +1,7 @@
 # 📖 Commands Guide / Руководство по командам
 
-Утилита запускается командой `tg-message-cleaner` и поддерживает три мощных режима работы.
-The utility is executed via `tg-message-cleaner` supporting three powerful subcommands.
+Утилита запускается командой `tg-msg-manager` и поддерживает три мощных режима работы.
+The utility is executed via `tg-msg-manager` supporting three powerful subcommands.
 
 [🇷🇺 Русская версия](#русский) | [🇬🇧 English Version](#english)
 
@@ -19,11 +19,11 @@ The utility is executed via `tg-message-cleaner` supporting three powerful subco
 
 **Примеры использования:**
 ```bash
-tg-message-cleaner clean --dry-run
-tg-message-cleaner clean --apply --yes
+tg-msg-manager clean --dry-run
+tg-msg-manager clean --apply --yes
 
 # Альтернативный запуск напрямую (python -m):
-python -m tg_message_cleaner.cli clean --dry-run
+python -m tg_msg_manager.cli clean --dry-run
 ```
 
 ### 📥 2. Режим экспорта (`export`)
@@ -37,10 +37,10 @@ python -m tg_message_cleaner.cli clean --dry-run
 **Примеры использования:**
 ```bash
 # Глобальный сканер по всем вашим чатам
-tg-message-cleaner export --user-id 5378570247
+tg-msg-manager export --user-id 5378570247
 
 # Точечный сканер внутри одной конкретной группы
-tg-message-cleaner export --user-id "spammer22" --chat-id -100123456789
+tg-msg-manager export --user-id "spammer22" --chat-id -100123456789
 ```
 
 ### 🔄 3. Режим обновления (`update`)
@@ -48,13 +48,13 @@ tg-message-cleaner export --user-id "spammer22" --chat-id -100123456789
 
 **Пример использования:**
 ```bash
-tg-message-cleaner update
+tg-msg-manager update
 ```
 
 ### 🌍 4. Глобальные Флаги
 **`--config-dir`** — Задает путь к папке с вашим конфигурационным файлом. 
 ```bash
-tg-message-cleaner --config-dir /etc/tg_cleaner export --user-id 12345
+tg-msg-manager --config-dir /etc/tg_cleaner export --user-id 12345
 ```
 
 ---
@@ -71,11 +71,11 @@ Deletes your messages from accessible groups and channels. Fine-tuning filters a
 
 **Examples:**
 ```bash
-tg-message-cleaner clean --dry-run
-tg-message-cleaner clean --apply --yes
+tg-msg-manager clean --dry-run
+tg-msg-manager clean --apply --yes
 
 # Run directly via python module:
-python -m tg_message_cleaner.cli clean --dry-run
+python -m tg_msg_manager.cli clean --dry-run
 ```
 
 ### 📥 2. Export Mode (`export`)
@@ -89,10 +89,10 @@ Locates a target user's entire footprint and extracts their messages into elegan
 **Examples:**
 ```bash
 # Global parallel scan across all your joined communities
-tg-message-cleaner export --user-id 5378570247
+tg-msg-manager export --user-id 5378570247
 
 # Targeted extraction in a designated group
-tg-message-cleaner export --user-id "spammer22" --chat-id -100123456789
+tg-msg-manager export --user-id "spammer22" --chat-id -100123456789
 ```
 
 ### 🔄 3. Update Mode (`update`)
@@ -100,11 +100,11 @@ A magic bullet command. It automatically reads your `EXPORTED_USRS` cache and pe
 
 **Examples:**
 ```bash
-tg-message-cleaner update
+tg-msg-manager update
 ```
 
 ### 🌍 4. Global Flags
 **`--config-dir`** — Instructs the tool to fetch its configuration from a specific directory path.
 ```bash
-tg-message-cleaner --config-dir /etc/tg_cleaner clean --apply --yes
+tg-msg-manager --config-dir /etc/tg_cleaner clean --apply --yes
 ```

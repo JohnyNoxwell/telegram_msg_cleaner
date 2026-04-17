@@ -7,9 +7,10 @@ config.json
 config.local.json
 delete_log.txt
 delete_history.log
-tg_message_cleaner_state.json
-tg_message_cleaner_state.json.tmp
+tg_msg_manager_state.json
+tg_msg_manager_state.json.tmp
 export_state.json
+.DS_store
 # Виртуальные окружения
 venv/
 .venv/

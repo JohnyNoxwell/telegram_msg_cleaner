@@ -14,7 +14,7 @@ def main() -> None:
         sys.argv.insert(1, 'clean')
 
     parser = argparse.ArgumentParser(
-        prog="tg-message-cleaner",
+        prog="tg-msg-manager",
         description="Инструмент для работы с вашими сообщениями в Telegram (удаление/экспорт).",
     )
 

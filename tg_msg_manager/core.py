@@ -13,7 +13,7 @@ from telethon.errors import FloodWaitError
 
 DEFAULT_CONFIG_CANDIDATES = ["config.local.json", "config.json"]
 DEFAULT_LOG_NAME = "delete_log.txt"
-DEFAULT_STATE_NAME = "tg_message_cleaner_state.json"
+DEFAULT_STATE_NAME = "tg_msg_manager_state.json"
 STATE_VERSION = 1
 
 
