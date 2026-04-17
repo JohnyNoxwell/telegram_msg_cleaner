@@ -51,7 +51,35 @@ tg-msg-manager export --user-id "spammer22" --chat-id -100123456789
 tg-msg-manager update
 ```
 
-### ⏳ 4. Режим авто-очистки (`schedule`)
+### 💬 4. Экспорт личной переписки (`export-pm`)
+Полный архив приватного диалога: текст + **все медиафайлы** (фото, видео, кружки, голосовые, GIF, документы). Медиа автоматически раскладываются по категориям в отдельные папки внутри `PRIVAT_DIALOGS/Имя_@юзернейм_ID/media/`.
+
+> ⚙️ **Встроенные защиты:** Инкрементальное обновление (докачивает только новое), лимит 50 МБ на файл, умный балансировщик загрузок (эмуляция обычного пользователя).
+
+**Флаги и Аргументы:**
+* `--user-id` *(Обязательный)* — ID или username пользователя, чей приватный диалог нужно архивировать.
+
+**Примеры использования:**
+```bash
+tg-msg-manager export-pm --user-id 5378570247
+tg-msg-manager export-pm --user-id "johndoe"
+```
+
+**Структура выгрузки:**
+```
+PRIVAT_DIALOGS/
+└── John Doe_@johndoe_+79991234567_5378570247/
+    ├── chat_log.txt
+    └── media/
+        ├── photos/
+        ├── videos/
+        ├── video_notes/
+        ├── voices/
+        ├── gifs/
+        └── documents/
+```
+
+### ⏳ 5. Режим авто-очистки (`schedule`)
 Новейший механизм "таймера самоуничтожения". Единожды задав вопросы через консоль (интервал, исключения), утилита сама зарегистрирует себя системным фоновым демоном (через `launchd` на macOS, `cron` на Linux или Планировщик задач на Windows). Ваши сообщения будут стабильно удаляться полностью в фоновом режиме по расписанию!
 
 **Пример использования:**
@@ -59,7 +87,7 @@ tg-msg-manager update
 tg-msg-manager schedule
 ```
 
-### 🌍 5. Глобальные Флаги
+### 🌍 6. Глобальные Флаги
 **`--config-dir`** — Задает путь к папке с вашим конфигурационным файлом. 
 ```bash
 tg-msg-manager --config-dir /etc/tg_cleaner export --user-id 12345
@@ -111,7 +139,35 @@ A magic bullet command. It automatically reads your `EXPORTED_USRS` cache and pe
 tg-msg-manager update
 ```
 
-### ⏳ 4. Auto-Clean Daemon (`schedule`)
+### 💬 4. Private Chat Archive (`export-pm`)
+A complete backup of a private (direct message) conversation: text + **all media files** (photos, videos, video notes / circles, voice messages, GIFs, documents). Media is automatically sorted into dedicated subfolders inside `PRIVAT_DIALOGS/Name_@username_ID/media/`.
+
+> ⚙️ **Built-in safeguards:** Incremental updates (only fetches new data), 50 MB per-file size limit, smart download throttler (emulates normal user behavior).
+
+**Flags & Arguments:**
+* `--user-id` *(Required)* — The numeric ID or username of the user whose DM thread to archive.
+
+**Examples:**
+```bash
+tg-msg-manager export-pm --user-id 5378570247
+tg-msg-manager export-pm --user-id "johndoe"
+```
+
+**Output structure:**
+```
+PRIVAT_DIALOGS/
+└── John Doe_@johndoe_+79991234567_5378570247/
+    ├── chat_log.txt
+    └── media/
+        ├── photos/
+        ├── videos/
+        ├── video_notes/
+        ├── voices/
+        ├── gifs/
+        └── documents/
+```
+
+### ⏳ 5. Auto-Clean Daemon (`schedule`)
 The state-of-the-art "self-destruct timer" setup. By asking a few simple questions in the console (time intervals, exclusion tracking), the utility instantly wraps itself around a native OS background daemon (`launchd` on macOS, `cron` on Linux, Task Scheduler on Windows). Your messages will be relentlessly and seamlessly scrubbed from the internet autonomously in the background!
 
 **Examples:**
@@ -119,7 +175,7 @@ The state-of-the-art "self-destruct timer" setup. By asking a few simple questio
 tg-msg-manager schedule
 ```
 
-### 🌍 5. Global Flags
+### 🌍 6. Global Flags
 **`--config-dir`** — Instructs the tool to fetch its configuration from a specific directory path.
 ```bash
 tg-msg-manager --config-dir /etc/tg_cleaner clean --apply --yes

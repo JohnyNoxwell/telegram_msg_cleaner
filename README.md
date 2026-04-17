@@ -25,6 +25,9 @@ CLI-утилита на базе `telethon` для продвинутого уп
 * ⏳ **Таймер самоуничтожения (`schedule`)**
   Позволяет скрипту в один клик превратиться в невидимого системного демона. Укажите интервал (например, каждые 12 часов), и он сам зарегистрируется в `launchd` / `cron` / `Windows Task Scheduler` для методичного удаления ваших сообщений в полном фоне!
 
+* 💬 **Архив личной переписки (`export-pm`)**
+  Полное резервное копирование приватного диалога с любым пользователем: текст и **все медиафайлы** (фото, видео, кружки, голосовые, GIF-анимации, документы). Медиа автоматически сортируются по папкам, лимит 50 МБ на файл, инкрементальное обновление.
+
 ---
 
 ### 💻 Установка (Windows / macOS / Linux)
@@ -105,6 +108,9 @@ A `telethon`-based CLI utility for advanced Telegram message management. Forget 
 
 * ⏳ **Self-Destruct Daemon (`schedule`)**
   Instantly metamorphosize the tool into an invisible background orchestrator. You specify an interval (e.g. every 12 hours) and it registers natively with `launchd` / `cron` / `Task Scheduler` to scrub your footprint automatically in complete stealth mode.
+
+* 💬 **Private Chat Archive (`export-pm`)**
+  Full backup of private conversations with any user: text and **all media files** (photos, videos, circles, voice messages, GIFs, documents). Media is auto-sorted into categorized folders, with a 50 MB per-file limit and incremental updates.
 
 ---
 

@@ -16,6 +16,8 @@ venv/
 .venv/
 .venv-test/
 EXPORTED_USRS/
+PRIVAT_DIALOGS/
+pm_export_state.json
 # Артефакты Python
 __pycache__/
 *.py[cod]
