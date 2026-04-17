@@ -1,204 +1,158 @@
-## tg-message-cleaner
+# 🧹 Telegram Message Cleaner & Exporter
 
-CLI-утилита на базе Telethon для удаления **своих** сообщений из чатов Telegram.
-
-- **Удаляет только ваши сообщения**
-- Поддерживает **dry-run** (репетиция без реального удаления)
-- Фильтры:
-  - по дате (например, только за последние 30 дней);
-  - по списку чатов (включить/исключить по ID и по названию);
-  - по типу сообщений (текст, медиа, пересланные).
-- Пакетное удаление и аккуратная работа с **FloodWait**.
-- Логирование в файл.
+[🇷🇺 Русская версия](#русский) | [🇬🇧 English Version](#english)
 
 ---
 
-### Установка
+<a id="русский"></a>
+## 🇷🇺 Русский
 
-Находясь в папке `TG_CLEANER` (там, где лежит `pyproject.toml`):
+CLI-утилита на базе `telethon` для продвинутого управления сообщениями в Telegram. Забудьте о рутинной ручной чистке: скрипт позволяет массово и безопасно очищать историю своих сообщений или молниеносно выгружать чужую.
 
+### 🌟 Главные функции
+
+* 🧹 **Тотальная очистка (`clean`)**
+  Удаляет **только ваши** сообщения изо всех групп и каналов, в которых вы состоите на данный момент. 
+  > Поддерживает `dry-run` (безопасную репетицию), фильтрацию по датам, типу контента (медиа/текст) и настройку белых/черных списков чатов. Грамотно обходит ошибки `FloodWait`.
+  
+* 📥 **Умный экспорт (`export`)**
+  Параллельный поиск и загрузка истории сообщений заданного пользователя. Сохраняет хронологию, контекст бесед (реплаи) и историю изменения никнеймов. 
+  > ⚠️ **Важно:** Поиск происходит исключительно в тех чатах и группах, к которым имеет доступ ваш аккаунт. Все выгрузки автоматически складываются в папку `EXPORTED_USRS`.
+  
+* 🔄 **Массовое обновление (`update`)**
+  Инкрементальное обновление базы экспортированных пользователей в один клик. Скрипт сам считывает профили из `EXPORTED_USRS` и докачивает только свежие сообщения, ведя подробный `changelog.txt`. За счет многопоточности работает в 10 раз быстрее!
+
+---
+
+### 💻 Установка (Windows / macOS / Linux)
+
+Утилита написана на Python и является полностью кроссплатформенной (требуется версия **3.9 или выше**). 
+
+**Шаг 1. Откройте терминал**
+Перейдите в папку с проектом (туда, где лежит файл `pyproject.toml`).
+
+**Шаг 2. Создание виртуального окружения (рекомендуется)**
+* 🪟 **Windows (CMD/PowerShell):**
+  ```cmd
+  python -m venv .venv
+  .venv\Scripts\activate
+  ```
+* 🍎🐧 **macOS / Linux (Terminal):**
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate
+  ```
+
+**Шаг 3. Установка пакета**
 ```bash
 pip install .
 ```
-
-Требуется Python **3.9+**.
-
----
-
-### Конфигурация (`config.local.json`)
-
-Скрипт ищет конфиг в директории запуска по приоритету:
-`config.local.json` (предпочтительный) или `config.json`.
-
-В репозитории хранится только `TG_CLEANER/config.example.json` — скопируйте/создайте локальный `TG_CLEANER/config.local.json`.
-
-Пример (`TG_CLEANER/config.example.json`):
-
-```json
-{
-  "api_id": 123456,
-  "api_hash": "YOUR_API_HASH",
-  "session_name": "tg_delete_my_msgs",
-
-  "dry_run": true,
-  "min_date_days_ago": null,
-
-  "include_chats": [],
-  "exclude_chats": [],
-  "exclude_chat_titles": [],
-
-  "delete_media": true,
-  "delete_text": true,
-  "delete_forwards": true,
-
-  "base_delay_sec": 0.15,
-  "max_delay_sec": 5.0,
-  "batch_size": 50
-}
-```
-
-- **`api_id` / `api_hash`**: взять с `https://my.telegram.org`.
-- **`dry_run`**:
-  - `true` – только показывает, какие сообщения были бы удалены (без удаления);
-  - `false` – реально удаляет сообщения.
-- **`min_date_days_ago`**:
-  - `null` – без ограничения по дате;
-  - число (например, `30`) – удалять только сообщения за последние 30 дней.
-- **`include_chats`**:
-  - пусто или `null` – обрабатывать все чаты;
-  - список ID чатов – обрабатывать только указанные.
-- **`exclude_chats`**:
-  - список ID чатов, которые нужно пропустить.
-- **`exclude_chat_titles`**:
-  - список названий чатов, которые нужно пропустить (сравнение case-insensitive по `dialog.name`/`dialog.title`).
-- **`delete_media` / `delete_text` / `delete_forwards`**:
-  - включить/отключить удаление медиа, текстов и пересланных сообщений.
-- **`base_delay_sec` / `max_delay_sec` / `batch_size`**:
-  - управляют скоростью и размером батча удаления, чтобы не ловить жёсткий FloodWait.
+> 💡 **Примечание для Windows:** Если после установки команда `tg-message-cleaner` не распознана, убедитесь, что путь к скриптам Python добавлен в переменную среды `PATH`, либо запускайте утилиту альтернативной командой `python -m tg_message_cleaner.cli`
 
 ---
 
-### Запуск
+### ⚙️ Конфигурация (`config.local.json`)
 
-Доступные команды (после `pip install .` или через `python -m`):
+Скопируйте пример файла `config.example.json` и назовите его `config.local.json`. Положите его в ту же директорию, откуда планируете запускать скрипт.
 
-#### 1. Удаление сообщений (clean)
-Репетиция (без реального удаления):
+**Ключевые параметры для удаления (`clean`):**
+- `api_id` / `api_hash`: ваши ключи разработчика (можно получить на [my.telegram.org](https://my.telegram.org)).
+- `dry_run`: установите `true`, чтобы посмотреть статистику предстоящего удаления без риска. Установите `false` для реального удаления.
+- `min_date_days_ago`: ограничить удаление временными рамками (например, `30` — удалить только то, что отправлено за последние 30 дней).
+- `include_chats` / `exclude_chats` / `exclude_chat_titles`: настройка белых и черных списков.
+
+---
+
+### 🚀 Быстрый старт
+
+Более подробное описание всех аргументов командной строки смотрите в отдельном справочнике: **[COMMANDS.md](COMMANDS.md)**.
+
+**Примеры:**
 ```bash
+# Репетиция удаления (посмотрит сколько удалит, но ничего не тронет)
 tg-message-cleaner clean --dry-run --yes
-# или по-старому:
-tg-message-cleaner --dry-run --yes
-```
 
-Реальное удаление:
-```bash
-tg-message-cleaner clean --apply --yes
-```
+# Экспорт всей истории сообщений спамера во всех ваших общих чатах
+tg-message-cleaner export --user-id 1234567
 
-#### 2. Экспорт сообщений (export)
-Инкрементально экспортирует историю сообщений пользователя в текстовый файл с сохранением хронологии и исходных (цитируемых) сообщений. По умолчанию все результаты сохраняются в папку `EXPORTED_USRS` и автоматически формируют имя файла.
-```bash
-# Глобальный поиск: найдет все сообщения юзера и сохранит их в EXPORTED_USRS/Экспорт_Ник_12345678.txt
-tg-message-cleaner export --user-id 12345678
-
-# Экспорт сообщений из конкретной группы (по ID или username)
-tg-message-cleaner export --user-id "spammer_username" --chat-id -1001234567
-
-# Указать кастомное имя файла в той же папке
-tg-message-cleaner export --user-id 12345678 --out "my_export.txt"
-```
-
-#### 3. Массовое обновление (update)
-Молниеносно проходит по всем ранее собранным экспортам в папке `EXPORTED_USRS`, ищет новые сообщения для каждого пользователя и дозаписывает их. Если пользователь поменял никнейм, это фиксируется в текстовом файле экспортов. Статистика обновления записывается в `changelog.txt`.
-```bash
+# Быстрое инкрементальное обновление всех собранных текстовых файлов
 tg-message-cleaner update
 ```
 
-Если команда `tg-message-cleaner` недоступна в `PATH`, можно запускать напрямую через Python:
-```bash
-python -m tg_message_cleaner.cli clean --dry-run --yes
-python -m tg_message_cleaner.cli export --user-id 12345678
-python -m tg_message_cleaner.cli update
-```
+---
+---
 
-### Возможности и улучшения
-- **Асинхронность:** корректная работа с `FloodWait` без блокировки цикла.
-- **Умное логирование:** запись в файл `delete_log.txt` и вывод в консоль.
-- **Полный проход:** каждый запуск повторно обрабатывает все найденные группы/каналы (progress state не используется).
-- **Безопасность:** добавлена проверка наличия обязательных полей в конфиге.
+<a id="english"></a>
+## 🇬🇧 English
 
-По умолчанию:
-- ищет `config.local.json` или `config.json` в текущей директории.
-- спрашивает подтверждение перед запуском.
-- в режиме `dry_run: true` только показывает количество сообщений.
+A `telethon`-based CLI utility for advanced Telegram message management. Forget about manual cleaning: this script allows you to safely bulk-delete your messages or perform lightning-fast history exports of targeted users.
 
-Примечание про прогресс/переходы:
-- сейчас каждый запуск делает полный проход по всем группам/каналам и `state` не используется.
-- опции `--no-resume` и `--reset-state` оставлены для совместимости.
+### 🌟 Key Features
+
+* 🧹 **Message Deletion (`clean`)**
+  Deletes **your** messages from any group chats and channels you are currently a member of.
+  > Supports `dry-run` rehearsal mode, specific date filtering, message type filtering, and chat white/blacklists. Intelligently prevents and handles `FloodWait` errors.
+  
+* 📥 **Message Exporting (`export`)**
+  Fast and highly concurrent scanning to download a specific user's chat history. It preserves chronological order, nickname histories, and the context of replied messages.
+  > ⚠️ **Note:** Exporting via user ID is strictly limited to the groups that your own account has joined. All generated text files are automatically saved into the `EXPORTED_USRS` directory.
+  
+* 🔄 **Mass Updater (`update`)**
+  One-click incremental update. The script automatically reads previously exported profiles from the `EXPORTED_USRS` folder and fetches only their newly written messages, logging all changes accurately to `changelog.txt`.
 
 ---
 
-### Где смотреть лог
+### 💻 Installation (Windows / macOS / Linux)
 
-По умолчанию лог пишется в файл `delete_log.txt` в той же директории, что и локальный конфиг (`config.local.json`/`config.json`).
+The utility is thoroughly cross-platform but requires **Python 3.9+**.
 
-В логе фиксируется:
+**Step 1. Open your terminal**
+Navigate to the root directory (where `pyproject.toml` is located).
 
-- какие чаты обрабатывались;
-- сколько сообщений найдено/удалено;
-- ошибки и события FloodWait.
+**Step 2. Create a virtual environment (Recommended)**
+* 🪟 **Windows (CMD/PowerShell):**
+  ```cmd
+  python -m venv .venv
+  .venv\Scripts\activate
+  ```
+* 🍎🐧 **macOS / Linux (Terminal):**
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate
+  ```
 
----
-
-## English
-
-`tg-message-cleaner` is a CLI utility (based on Telethon) that deletes **your own** messages from Telegram group chats and channels.
-
-### Install
-
+**Step 3. Install the package**
 ```bash
-cd TG_CLEANER
 pip install .
 ```
+> 💡 **Note for Windows users:** If the `tg-message-cleaner` command is not recognized post-installation, ensure your Python scripts folder is added to your environment `PATH` variable, or run the tool via `python -m tg_message_cleaner.cli`.
 
-### Configuration
+---
 
-Create `TG_CLEANER/config.local.json` (recommended) from `TG_CLEANER/config.example.json`.
+### ⚙️ Configuration (`config.local.json`)
 
-The tool looks for `config.local.json` first, and then falls back to `config.json` in the **current working directory** (unless you set `TGMC_CONFIG_DIR`).
+Copy `config.example.json` and optionally rename it to `config.local.json` in your execution directory.
 
-Extra filtering:
-- `exclude_chats`: skip chats by ID
-- `exclude_chat_titles`: skip chats by name/title (case-insensitive; matches `dialog.name` / `dialog.title`)
+**Crucial parameters for deleting (`clean`):**
+- `api_id` / `api_hash`: get these from [my.telegram.org](https://my.telegram.org).
+- `dry_run`: set `true` to test the script without actual deletion. Set `false` for real deletions.
+- `min_date_days_ago`: limit to the past X days (e.g., `30`).
+- `include_chats` / `exclude_chats`: tweak chat allowances.
 
-### Run
+---
 
-Dry-run (no deletion):
+### 🚀 Quick Start
 
+For an exhaustive and comprehensive guide on commands and flags, please refer to **[COMMANDS.md](COMMANDS.md)**.
+
+**Examples:**
 ```bash
-tg-message-cleaner --dry-run --yes
+# Dry-run deletion
+tg-message-cleaner clean --dry-run --yes
+
+# Export all messages of a spammer from all your common chats
+tg-message-cleaner export --user-id 1234567
+
+# Blazing fast incremental update of all locally exported users
+tg-message-cleaner update
 ```
-
-Real deletion:
-
-```bash
-tg-message-cleaner --apply --yes
-```
-
-If `tg-message-cleaner` is not in `PATH`, run without installation:
-
-```bash
-python -m tg_message_cleaner.cli --dry-run --yes
-python -m tg_message_cleaner.cli --apply --yes
-```
-
-Progress/resume note:
-- each run does a full sweep; `state` is not used
-- `--no-resume` / `--reset-state` are kept only for backward compatibility
-
-### Key Improvements
-- **Async Fix:** Proper `FloodWait` handling without blocking the event loop.
-- **Improved Logging:** File logging (`delete_log.txt`) plus console output.
-- **Full Sweep Each Run:** Each run re-processes all groups/channels (progress state is not used).
-- **Config Validation:** Validates required fields (`api_id`, `api_hash`) on startup.
-

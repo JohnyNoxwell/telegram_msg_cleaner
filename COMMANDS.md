@@ -1,106 +1,110 @@
-# Руководство по командам `tg-message-cleaner`
+# 📖 Commands Guide / Руководство по командам
 
-Утилита поддерживает два основных режима (подкоманды): `clean` (для очистки своих сообщений) и `export` (для выгрузки чужих сообщений). Также доступны глобальные флаги конфигурации.
+Утилита запускается командой `tg-message-cleaner` и поддерживает три мощных режима работы.
+The utility is executed via `tg-message-cleaner` supporting three powerful subcommands.
 
----
-
-## 1. Режим очистки: `clean` (По умолчанию)
-Эта команда удаляет ваши сообщения из доступных групп и каналов. Вы можете регулировать поведение списками исключений, датами и другими параметрами в файле `config.json` / `config.local.json`.
-
-**Список доступных аргументов:**
-- `--dry-run` (или `--dry-run-flag`) — Режим "холостого хода". Скрипт просто покажет, сколько сообщений вы потенциально можете удалить, но **ничего не удалит**.
-- `--apply` — **Реальное удаление**. Переопределяет параметр `dry_run` из конфигурации и принудительно удаляет найденные сообщения.
-- `--yes` — Убирает интерактивный вопрос "Продолжить с этими настройками? [y/N]" при запуске. Удобно для запуска по расписанию (cron).
-- `--no-resume` / `--reset-state` — Оставлены для совместимости, в данный момент игнорируются, так как скрипт каждый раз сканирует всё заново без файла состояний.
-
-> **Примечание:** Если вы просто напишете `tg-message-cleaner --apply`, скрипт автоматически поймет, что вы обращаетесь к команде `clean`.
-
-### 💡 Примеры использования `clean`
-
-1. **Репетиция удаления (Проверка без риска):**
-   ```bash
-   tg-message-cleaner clean --dry-run
-   # или классический вариант:
-   tg-message-cleaner --dry-run
-   ```
-
-2. **Боевое удаление сообщений (с автоматическим ответом "Да"):**
-   ```bash
-   tg-message-cleaner clean --apply --yes
-   # или
-   tg-message-cleaner --apply --yes
-   ```
-
-3. **Запуск напрямую через модуль Python (если путь не настроен):**
-   ```bash
-   python -m tg_message_cleaner.cli clean --dry-run
-   ```
+[🇷🇺 Русская версия](#русский) | [🇬🇧 English Version](#english)
 
 ---
+<a id="русский"></a>
+## 🇷🇺 Русский: Подробное руководство
 
-## 2. Режим экспорта: `export`
-Команда инкрементально ищет все новые сообщения заданного пользователя и выкачивает их в текстовый файл с сохранением хронологического порядка и вложенных "ответов" (reply). Все результаты по умолчанию сохраняются в автоматически создаваемую папку `EXPORTED_USRS`.
+### 🧹 1. Режим очистки (`clean`) — *По умолчанию*
+Удаляет ваши сообщения из доступных групп и каналов. Тонкая настройка (исключения, даты) производится в файле конфигурации.
 
-**Список доступных аргументов:**
-- `--user-id` *(Обязательный)* — ID или username пользователя, чьи сообщения вы хотите собрать. Пример: `1234567` или `some_user`.
-- `--chat-id` *(Опциональный)* — ID или username конкретной группы/канала, где нужно выполнить поиск. Если не указать, скрипт будет искать пользователя **во всех 100% чатах**, в которых вы состоите.
-- `--out` *(Опциональный)* — Название файла для сохранения текста в папке `EXPORTED_USRS`. **По умолчанию** скрипт автоматически генерирует файлу понятное имя (например, `Экспорт_Имя_ID.txt`).
+**Флаги и Аргументы:**
+* `--dry-run` (или `--dry-run-flag`) — 🛡️ **Безопасный режим.** Скрипт просканирует чаты и покажет точное количество сообщений, но ничего **не удалит**.
+* `--apply` — 🧨 **Боевой режим.** Принудительное реальное удаление сообщений (игнорирует параметр `dry_run` в конфиге).
+* `--yes` — 🤖 Пропуск подтверждения. Идеально для автоматизации скриптов (cron), чтобы утилита не просила нажать `[y/N]`.
 
-### 💡 Примеры использования `export`
+**Примеры использования:**
+```bash
+tg-message-cleaner clean --dry-run
+tg-message-cleaner clean --apply --yes
 
-1. **Глобальный поиск юзера по всем вашим чатам (автосохранение в EXPORTED_USRS):**
-   ```bash
-   tg-message-cleaner export --user-id 5378570247
-   ```
+# Альтернативный запуск напрямую (python -m):
+python -m tg_message_cleaner.cli clean --dry-run
+```
 
-2. **Экспорт сообщений из конкретной группы с кастомным названием файла:**
-   ```bash
-   tg-message-cleaner export --user-id "spammer22" --chat-id -100123456789 --out spammer_history.txt
-   ```
+### 📥 2. Режим экспорта (`export`)
+Ищет все сообщения заданного пользователя и выкачивает их в удобный для чтения текстовый файл, сохраняя хронологию и вложенные ответы (replies). Поиск выполняется **в 10 потоков**, обеспечивая сверхбыструю выгрузку в папку `EXPORTED_USRS`.
 
-3. **Запуск напрямую через модуль Python:**
-   ```bash
-   python -m tg_message_cleaner.cli export --user-id 5378570247 --chat-id -100123456789
-   ```
+**Флаги и Аргументы:**
+* `--user-id` *(Обязательный)* — ID или username (ник) целевого пользователя.
+* `--chat-id` *(Опциональный)* — ID или username конкретной группы для поиска. Если не указать — скрипт проверит **абсолютно все** ваши чаты.
+* `--out` *(Опциональный)* — Свое имя текстового файла вместо сгенерированного автоматически `Экспорт_Имя_ID.txt`.
+
+**Примеры использования:**
+```bash
+# Глобальный сканер по всем вашим чатам
+tg-message-cleaner export --user-id 5378570247
+
+# Точечный сканер внутри одной конкретной группы
+tg-message-cleaner export --user-id "spammer22" --chat-id -100123456789
+```
+
+### 🔄 3. Режим обновления (`update`)
+Магическая команда. Автоматически сканирует вашу папку `EXPORTED_USRS` и **параллельно** загружает *новые* сообщения для **каждого** ранее выгруженного пользователя. Автоматически фиксирует смену никнеймов и записывает краткий отчет проделанной работы в `changelog.txt`.
+
+**Пример использования:**
+```bash
+tg-message-cleaner update
+```
+
+### 🌍 4. Глобальные Флаги
+**`--config-dir`** — Задает путь к папке с вашим конфигурационным файлом. 
+```bash
+tg-message-cleaner --config-dir /etc/tg_cleaner export --user-id 12345
+```
 
 ---
+<a id="english"></a>
+## 🇬🇧 English: Extensive Guide
 
-## 3. Режим обновления: `update`
+### 🧹 1. Clean Mode (`clean`) — *Default*
+Deletes your messages from accessible groups and channels. Fine-tuning filters and blacklists are handled via your config file.
 
-Команда автоматически проходит по всем пользователям, которые были когда-либо экспортированы в папку `EXPORTED_USRS`, и загружает только их свежие сообщения (с момента последнего экспорта). 
+**Flags & Arguments:**
+* `--dry-run` — 🛡️ **Safe rehearsal.** Audits your chats and prints stats on what would be removed, but performs **no actual deletion**.
+* `--apply` — 🧨 **Combat mode.** Real deletion. Forcefully overrides the `dry_run` configuration.
+* `--yes` — 🤖 Bypasses the initial `[y/N]` confirmation prompts. Highly useful for headless cron jobs.
 
-Особенности команды `update`:
-- **Отслеживание никнеймов:** Если пользователь сменит никнейм в Telegram, скрипт заметит это, запишет историю изменения никнеймов в шапку файла, и начнет использовать новый ник для всех последующих сообщений. Имя файла при этом останется прежним, чтобы не нарушать вашу файловую систему.
-- **Массовость:** Одной командой вы можете обновить сразу 100 профилей. Не нужно писать ID вручную.
-- **Логирование:** По завершении генерируется файл `EXPORTED_USRS/changelog.txt`, в котором отображается краткая сводка — кто сменил имя, и сколько новых сообщений было дописано в базу.
+**Examples:**
+```bash
+tg-message-cleaner clean --dry-run
+tg-message-cleaner clean --apply --yes
 
-### 💡 Примеры использования `update`
+# Run directly via python module:
+python -m tg_message_cleaner.cli clean --dry-run
+```
 
-1. **Массовое обновление базы экспортов:**
-   ```bash
-   tg-message-cleaner update
-   ```
+### 📥 2. Export Mode (`export`)
+Locates a target user's entire footprint and extracts their messages into elegantly formatted text files, complete with chronological order and embedded replies. Lookups are executed with a **concurrency pool of 10** for ultra-fast speeds, saving all data to an auto-created `EXPORTED_USRS` folder.
 
-2. **Запуск через модуль Python:**
-   ```bash
-   python -m tg_message_cleaner.cli update
-   ```
+**Flags & Arguments:**
+* `--user-id` *(Required)* — The numeric ID or username of the targeted entity.
+* `--chat-id` *(Optional)* — Restrict scanning to a specific chat ID/username. If omitted, performs a **global parallel scan across all your chats**.
+* `--out` *(Optional)* — A custom filename for the output.
 
----
+**Examples:**
+```bash
+# Global parallel scan across all your joined communities
+tg-message-cleaner export --user-id 5378570247
 
-## 4. Глобальные настройки
+# Targeted extraction in a designated group
+tg-message-cleaner export --user-id "spammer22" --chat-id -100123456789
+```
 
-**Глобальный аргумент:**
-- `--config-dir` — Позволяет указать свой путь к директории конфигурационных файлов `config.json` и `delete_log.txt`. По умолчанию используется текущая директория или путь из переменной окружения `TGMC_CONFIG_DIR`.
+### 🔄 3. Update Mode (`update`)
+A magic bullet command. It automatically reads your `EXPORTED_USRS` cache and performs a **highly concurrent** fetch of only the *newest* messages for every previously extracted user. It also dynamically tracks nickname changes into the document headers and generates a `changelog.txt` summary file upon completion.
 
-### 💡 Примеры с `--config-dir`
+**Examples:**
+```bash
+tg-message-cleaner update
+```
 
-1. **Использовать конфиг из папки `~/dev/my_configs` при экспорте:**
-   ```bash
-   tg-message-cleaner --config-dir ~/dev/my_configs export --user-id 5378570247
-   ```
-
-2. **Использовать конфиг из удаленной папки для очистки:**
-   ```bash
-   tg-message-cleaner --config-dir /etc/tg_cleaner clean --apply --yes
-   ```
+### 🌍 4. Global Flags
+**`--config-dir`** — Instructs the tool to fetch its configuration from a specific directory path.
+```bash
+tg-message-cleaner --config-dir /etc/tg_cleaner clean --apply --yes
+```

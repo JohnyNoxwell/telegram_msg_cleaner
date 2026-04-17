@@ -183,8 +183,9 @@ async def _run_export_in_chat(
     target_author_id: int,
     target_author_username: Optional[str],
     file_obj, 
-    state_manager: ExportStateManager
-) -> Tuple[int, Optional[datetime]]:
+    state_manager: ExportStateManager,
+    file_lock: Optional[asyncio.Lock] = None
+) -> Tuple[int, Optional[datetime], int]:
     chat_title = getattr(entity, 'title', getattr(entity, 'id', 'Unknown'))
     chat_id = _get_chat_id(entity)
     user_id = target_user.id
@@ -199,30 +200,112 @@ async def _run_export_in_chat(
     if last_msg_id > 0:
         kwargs["min_id"] = last_msg_id
 
+    messages_chunk = []
+
+    async def process_and_flush_chunk():
+        nonlocal count
+        if not messages_chunk:
+            return
+            
+        reply_ids = list({m.reply_to.reply_to_msg_id for m in messages_chunk if m.reply_to and m.reply_to.reply_to_msg_id})
+        original_msgs_dict = {}
+        
+        if reply_ids:
+            try:
+                for i in range(0, len(reply_ids), 100):
+                    batch_ids = reply_ids[i:i+100]
+                    orig_msgs = await client.get_messages(entity, ids=batch_ids)
+                    if orig_msgs:
+                        if not isinstance(orig_msgs, list):
+                            orig_msgs = [orig_msgs]
+                        for m in orig_msgs:
+                            if m and getattr(m, 'id', None):
+                                original_msgs_dict[m.id] = m
+            except Exception:
+                pass
+                
+        blocks_to_write = []
+        for msg in messages_chunk:
+            is_reply = bool(msg.reply_to)
+            reply_to_id = msg.reply_to.reply_to_msg_id if is_reply else None
+            text = msg.raw_text or "(медиа/пустое сообщение)"
+            
+            msg_data = MessageData(
+                date=msg.date,
+                author_name=target_author_name,
+                author_id=target_author_id,
+                author_username=target_author_username,
+                text=text,
+                is_reply=is_reply,
+                reply_to_msg_id=reply_to_id
+            )
+            
+            if is_reply and reply_to_id:
+                orig_msg_obj = original_msgs_dict.get(reply_to_id)
+                if orig_msg_obj and getattr(orig_msg_obj, "date", None):
+                    try:
+                        sender = await orig_msg_obj.get_sender()
+                        name, uid, uname = _get_author_info(sender)
+                        msg_data.original_msg = MessageData(
+                            date=orig_msg_obj.date,
+                            author_name=name,
+                            author_id=uid,
+                            author_username=uname,
+                            text=orig_msg_obj.raw_text or "(медиа/пустое сообщение)"
+                        )
+                    except Exception:
+                        msg_data.original_msg = MessageData(
+                            date=orig_msg_obj.date,
+                            author_name="Unknown",
+                            author_id=0,
+                            author_username=None,
+                            text="(ошибка загрузки профиля)"
+                        )
+                else:
+                    msg_data.original_msg = MessageData(
+                        date=datetime.now(), 
+                        author_name="Unknown", 
+                        author_id=0,
+                        author_username=None,
+                        text="(сообщение недоступно/ошибка загрузки)"
+                    )
+
+            blocks_to_write.append(format_export_block(msg_data))
+            
+        text_to_write = ""
+        for block in blocks_to_write:
+            text_to_write += block + "\n\n" + "-" * 40 + "\n\n"
+            
+        if file_lock:
+            async with file_lock:
+                file_obj.write(text_to_write)
+                file_obj.flush()
+        else:
+            file_obj.write(text_to_write)
+            file_obj.flush()
+            
+        count += len(messages_chunk)
+        if count % 200 == 0:
+            print(f"  ... [Чат: {str(chat_title)[:15]}] экспортировано {count} сообщений")
+        messages_chunk.clear()
+
     async for msg in client.iter_messages(entity, **kwargs):
         if not msg.date:
             continue
             
-        data = await process_message(client, entity, msg, target_author_name, target_author_id, target_author_username)
-        block = format_export_block(data)
-        
-        file_obj.write(block)
-        file_obj.write("\n\n" + "-" * 40 + "\n\n")
-        file_obj.flush()
-        
-        count += 1
+        messages_chunk.append(msg)
         if msg.id > highest_msg_id:
             highest_msg_id = msg.id
         if latest_date is None or msg.date > latest_date:
             latest_date = msg.date
             
-        if count % 50 == 0:
-            print(f"  ... найдено {count} новых сообщений")
+        if len(messages_chunk) >= 100:
+            await process_and_flush_chunk()
 
-    if highest_msg_id > last_msg_id:
-        state_manager.update_last_msg_id(user_id, chat_id, highest_msg_id)
+    if messages_chunk:
+        await process_and_flush_chunk()
             
-    return count, latest_date
+    return count, latest_date, highest_msg_id
 
 
 def update_export_file_header(filepath: str, nicknames: List[str]):
@@ -328,15 +411,31 @@ async def export_messages_async(settings: Settings, target_user_identifier: str,
         update_export_file_header(output_file, nicks)
 
     total_messages = 0
+    file_lock = asyncio.Lock()
+    sem = asyncio.Semaphore(10)
+    
     with open(output_file, "a", encoding="utf-8") as file_obj:
-        for chat_entity in dialogs_to_check:
-            try:
-                print(f"Поиск в чате: {getattr(chat_entity, 'title', getattr(chat_entity, 'id', 'Unknown'))}")
-                found, _ = await _run_export_in_chat(client, chat_entity, target_user, target_author_name, target_author_id, target_author_uname, file_obj, state_manager)
-                total_messages += found
-            except Exception as e:
-                # print(f"Пропуск чата (возможно, нет прав или другая ошибка): {e}")
-                pass
+        print("Начинаем параллельный поиск по чатам...")
+        async def process_chat(chat_entity):
+            async with sem:
+                try:
+                    chat_id = _get_chat_id(chat_entity)
+                    found, latest_date, highest_id = await _run_export_in_chat(
+                        client, chat_entity, target_user, target_author_name, 
+                        target_author_id, target_author_uname, file_obj, 
+                        state_manager, file_lock
+                    )
+                    return chat_id, found, latest_date, highest_id
+                except Exception:
+                    return None, 0, None, 0
+                    
+        tasks = [process_chat(chat) for chat in dialogs_to_check]
+        results = await asyncio.gather(*tasks)
+        
+        for chat_id, found, _, highest_id in results:
+            if chat_id is not None and highest_id > 0:
+                state_manager.update_last_msg_id(target_user.id, chat_id, highest_id)
+            total_messages += found
                 
     print(f"\nВыгрузка завершена! Всего НОВЫХ сообщений экспортировано: {total_messages}")
     await client.disconnect()
@@ -391,19 +490,33 @@ async def export_update_async(settings: Settings):
 
         total_new_msgs = 0
         latest_overall_date = None
+        file_lock = asyncio.Lock()
+        sem = asyncio.Semaphore(10)
         
         with open(output_file, "a", encoding="utf-8") as file_obj:
-            for chat_entity in dialogs_to_check:
-                try:
-                    found, latest_date = await _run_export_in_chat(
-                        client, chat_entity, target_user, target_author_name, target_author_id, target_author_uname, file_obj, state_manager
-                    )
-                    total_new_msgs += found
-                    if latest_date:
-                        if latest_overall_date is None or latest_date > latest_overall_date:
-                            latest_overall_date = latest_date
-                except Exception:
-                    pass
+            async def process_chat(chat_entity):
+                async with sem:
+                    try:
+                        chat_id = _get_chat_id(chat_entity)
+                        found, latest_date, highest_id = await _run_export_in_chat(
+                            client, chat_entity, target_user, target_author_name, 
+                            target_author_id, target_author_uname, file_obj, 
+                            state_manager, file_lock
+                        )
+                        return chat_id, found, latest_date, highest_id
+                    except Exception:
+                        return None, 0, None, 0
+
+            tasks = [process_chat(chat) for chat in dialogs_to_check]
+            results = await asyncio.gather(*tasks)
+            
+            for chat_id, found, latest_date, highest_id in results:
+                if chat_id is not None and highest_id > 0:
+                    state_manager.update_last_msg_id(target_user.id, chat_id, highest_id)
+                total_new_msgs += found
+                if latest_date:
+                    if latest_overall_date is None or latest_date > latest_overall_date:
+                        latest_overall_date = latest_date
         
         print(f"    Завершено. Новых сообщений для {target_author_name}: {total_new_msgs}")
         
