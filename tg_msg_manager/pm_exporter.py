@@ -15,7 +15,7 @@ from telethon.tl.types import (
     DocumentAttributeAnimated, DocumentAttributeFilename,
 )
 
-from .core import load_settings, Settings, ts_print
+from .core import load_settings, Settings, ts_print, robust_client_start
 
 # ────────────────────────────────────────────
 # Константы
@@ -228,7 +228,7 @@ async def export_pm_async(
     max_file_size: int = MAX_FILE_SIZE_BYTES,
 ):
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
-    await client.start()
+    await robust_client_start(client)
     me = await client.get_me()
 
     # ── Резолвим целевого пользователя ──

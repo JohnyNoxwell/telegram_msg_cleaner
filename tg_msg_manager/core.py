@@ -6,6 +6,7 @@ import hashlib
 import os
 from typing import List, Optional, Set
 
+import sqlite3
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
  
@@ -15,6 +16,57 @@ DEFAULT_CONFIG_CANDIDATES = ["config.local.json", "config.json"]
 DEFAULT_LOG_NAME = "LOGS/delete_log.txt"
 DEFAULT_STATE_NAME = "tg_msg_manager_state.json"
 STATE_VERSION = 1
+
+
+async def enable_wal_mode(session_name: str, config_dir: str = "."):
+    """
+    Включает режим WAL (Write-Ahead Logging) для SQLite базы данных сессии.
+    Это позволяет нескольким процессам читать базу одновременно, даже если один пишет.
+    """
+    db_path = os.path.join(config_dir, f"{session_name}.session")
+    if not os.path.exists(db_path):
+        return
+    
+    try:
+        # Используем обычный sqlite3, чтобы выполнить PRAGMA
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.close()
+    except Exception as e:
+        ts_print(f"Предупреждение: Не удалось включить WAL режим: {e}")
+
+
+async def robust_client_start(client: TelegramClient, max_retries: int = 12, retry_delay: int = 5):
+    """
+    Запускает клиент Telethon, обрабатывая ошибку 'database is locked'.
+    Если база занята другим процессом (например, фоновым обновлением),
+    будет ждать и повторять попытки.
+    """
+    # Сначала попробуем включить WAL, чтобы минимизировать будущие блокировки
+    session_file = client.session.filename if hasattr(client.session, 'filename') else None
+    if session_file and os.path.exists(session_file):
+        try:
+            conn = sqlite3.connect(session_file)
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.close()
+        except Exception:
+            pass
+
+    for i in range(max_retries):
+        try:
+            await client.start()
+            return
+        except sqlite3.OperationalError as e:
+            if "database is locked" in str(e):
+                if i < max_retries - 1:
+                    ts_print(f"⚠️ База данных сессии заблокирована другим процессом. Ожидание {retry_delay} сек... (Попытка {i+1}/{max_retries})")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    ts_print("❌ Ошибка: База данных сессии остается заблокированной слишком долго.")
+                    ts_print("Проверьте, не запущены ли другие копии tg_msg_manager (например, 'update' или 'clean' в фоне).")
+                    raise
+            else:
+                raise
 
 
 @dataclass
@@ -219,7 +271,7 @@ async def delete_my_messages(settings: Settings, state_path: Optional[str] = Non
         print(f"[{now}] {msg}")
 
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
-    await client.start()
+    await robust_client_start(client)
 
     me = await client.get_me()
     my_id = me.id

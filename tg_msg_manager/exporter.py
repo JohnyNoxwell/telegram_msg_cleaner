@@ -9,7 +9,7 @@ from typing import Optional, List, Set, Dict, Tuple
 from telethon import TelegramClient
 from telethon.tl.types import User, Message
 
-from .core import load_settings, Settings, ts_print
+from .core import load_settings, Settings, ts_print, robust_client_start
 
 
 @dataclass
@@ -356,7 +356,7 @@ async def _get_all_dialogs(client: TelegramClient) -> list:
 
 async def export_messages_async(settings: Settings, target_user_identifier: str, chat_identifier: Optional[str], output_file: Optional[str]):
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
-    await client.start()
+    await robust_client_start(client)
 
     try:
         try:
@@ -464,7 +464,7 @@ async def export_update_async(settings: Settings):
     ts_print(f"Найдено {len(user_files)} пользователей для массового обновления.")
     
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
-    await client.start()
+    await robust_client_start(client)
     
     ts_print("Собираем список всех групп/каналов один раз...")
     dialogs_to_check = await _get_all_dialogs(client)
