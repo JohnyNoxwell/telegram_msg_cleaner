@@ -19,7 +19,7 @@ from .models import MessageData
 MAX_MESSAGES_PER_FILE = 5000
 
 class FileRotateWriter:
-    def __init__(self, base_path: str, as_json: bool = False, max_msgs: int = MAX_MESSAGES_PER_FILE):
+    def __init__(self, base_path: str, as_json: bool = False, max_msgs: int = MAX_MESSAGES_PER_FILE, overwrite: bool = False):
         self.base_path = base_path
         self.as_json = as_json
         self.max_msgs = max_msgs
@@ -34,8 +34,30 @@ class FileRotateWriter:
         self.current_count = 0
         self.current_file_path = self._get_path()
         
-        # If file exists, we might need to find the latest part
-        self._detect_current_state()
+        if overwrite:
+            self._cleanup_existing_files()
+        else:
+            # If file exists, we might need to find the latest part
+            self._detect_current_state()
+
+    def _cleanup_existing_files(self):
+        """Удаляет все части экспорта при полной пересинхронизации."""
+        part = 1
+        while True:
+            if part == 1:
+                path = os.path.join(self.directory, f"{self.name_no_ext}{self.ext}")
+            else:
+                path = os.path.join(self.directory, f"{self.name_no_ext}_part{part}{self.ext}")
+            
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                    ts_print(f"  [x] Удален старый файл экспорта: {os.path.basename(path)}")
+                except Exception as e:
+                    ts_print(f"  [!] Ошибка удаления {path}: {e}")
+                part += 1
+            else:
+                break
 
     def _get_path(self):
         if self.current_part == 1:
@@ -81,6 +103,15 @@ class FileRotateWriter:
 
 def clean_filename(name: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', '_', name).strip()
+
+def get_export_path(author_name: str, author_id: int, context_window: int, as_json: bool) -> str:
+    """Генерирует стандартный путь к файлу экспорта."""
+    export_dir = "PUBLIC_GROUPS"
+    os.makedirs(export_dir, exist_ok=True)
+    safe_name = clean_filename(author_name)
+    ext = ".jsonl" if as_json else ".txt"
+    suffix = "_DEEP" if context_window > 0 else ""
+    return os.path.join(export_dir, f"Экспорт_{safe_name}_{author_id}{suffix}{ext}")
 
 def _get_author_info(sender) -> tuple[str, int, Optional[str]]:
     if isinstance(sender, User):
@@ -215,9 +246,12 @@ async def _run_export_in_chat(
             
             # 1. Save to Files
             if writer:
-                blocks.append(format_export_block(data, as_json))
+                # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем, не выгружали ли мы это сообщение ранее.
+                # Если force_resync=True, пропускаем проверку, так как файл в этом режиме перезаписывается с нуля.
+                if force_resync or not storage.message_exists(data.chat_id, data.msg_id):
+                    blocks.append(format_export_block(data, as_json))
             
-            # 2. Save to Storage (DB)
+            # 2. Save to Storage (DB) - Всегда сохраняем (INSERT OR REPLACE обновит метаданные если надо)
             if storage:
                 storage.save_message(data)
                 
@@ -300,8 +334,17 @@ async def _run_export_in_chat(
                 
                 if related:
                     m_data = await process_message(client, entity, msg, t_name if msg.sender_id == t_id else None)
-                    cluster_msg_data_list.append(m_data)
-                    all_exported_ids.add(msg.id)
+                    
+                    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем, не выгружали ли мы это сообщение ранее.
+                    # Если force_resync=True, пропускаем проверку, так как файл перезаписывается с нуля.
+                    if writer and (force_resync or not storage.message_exists(m_data.chat_id, m_data.msg_id)):
+                        cluster_msg_data_list.append(m_data)
+                        all_exported_ids.add(msg.id)
+                    
+                    # ВСЕГДА сохраняем в БД, чтобы в следующий раз знать об этом сообщении
+                    if storage:
+                        storage.save_message(m_data)
+                        
                     cluster_msg_count += 1
                     
                     # КРИТИЧЕСКИЙ ФИКС: высший ID должен обновляться ТОЛЬКО от сообщений цели,
@@ -364,11 +407,9 @@ async def export_messages_async(settings: Settings, target_identifier: str, chat
 
     export_dir = "PUBLIC_GROUPS"; os.makedirs(export_dir, exist_ok=True)
     if not output_file:
-        safe_name = clean_filename(t_name)
-        ext = ".jsonl" if as_json else ".txt"
-        output_file = os.path.join(export_dir, f"Экспорт_{safe_name}_{t_id}{'_DEEP' if context_window > 0 else ''}{ext}")
+        output_file = get_export_path(t_name, t_id, context_window, as_json)
     
-    writer = FileRotateWriter(output_file, as_json=as_json)
+    writer = FileRotateWriter(output_file, as_json=as_json, overwrite=force_resync)
     dialogs = await _get_target_dialogs(client, settings, chat_identifier)
         
     ts_print(f"Пользователь: {t_name}. Чатов: {len(dialogs)}")
@@ -426,6 +467,22 @@ async def run_export_update_async(config_dir: str, as_json: bool = True, context
     sem = asyncio.Semaphore(10)
     ts_print(f"🔄 Смарт-обновление: запуск для {len(active_targets)} отслеживаемых пар (пользователь-чат)...")
     
+    total_targets = len(active_targets)
+    targets_done = 0
+    total_messages = 0
+    current_user_name = ""
+    current_chat_title = ""
+
+    def update_status(new_count=0, chat_finished=False, user_name=None, chat_title=None):
+        nonlocal total_messages, targets_done, current_user_name, current_chat_title
+        if user_name: current_user_name = user_name
+        if chat_title: current_chat_title = chat_title
+        if chat_finished: targets_done += 1
+        total_messages += new_count
+        
+        status_line = f"\r🔄 Обновление: {current_user_name} | {current_chat_title} | 📥 Собрано: {total_messages} | [{targets_done}/{total_targets}] целей"
+        print(status_line, end="", flush=True)
+
     # Группируем цели по пользователям, чтобы не пересоздавать клиента/сущности
     from collections import defaultdict
     user_groups = defaultdict(list)
@@ -440,19 +497,13 @@ async def run_export_update_async(config_dir: str, as_json: bool = True, context
                 u_name, u_id, u_uname = _get_author_info(user)
             except Exception:
                 u_name = targets[0]['author_name']; u_id = uid; u_uname = None
-                ts_print(f"  [!] Не удалось обновить сущность пользователя {uid}, используем имя из базы.")
+                print(f"\n  [!] Не удалось обновить сущность пользователя {uid}, используем имя из базы.")
 
-            safe_name = clean_filename(u_name)
-            ext = ".jsonl" if as_json else ".txt"
-            # Для имени файла в апдейте используем либо переданное окно, либо просто проверяем, было ли оно передано
-            # Если не передано, не добавляем суффикс (он уже есть в существующем файле или не нужен)
-            suffix = ""
-            if context_window is not None and context_window > 0:
-                suffix = "_DEEP"
+            # Определяем эффективное окно для имени файла (приоритет CLI, иначе макс. из БД)
+            effective_window = context_window if context_window is not None else max((t.get('window_size', 0) for t in targets), default=0)
             
-            opath = os.path.join("PUBLIC_GROUPS", f"Экспорт_{safe_name}_{u_id}{suffix}{ext}")
-            
-            writer = FileRotateWriter(opath, as_json=as_json)
+            opath = get_export_path(u_name, u_id, effective_window, as_json)
+            writer = FileRotateWriter(opath, as_json=as_json, overwrite=force_resync)
             
             for t in targets:
                 cid = t['chat_id']
@@ -461,32 +512,36 @@ async def run_export_update_async(config_dir: str, as_json: bool = True, context
                 try:
                     chat_entity = await client.get_entity(cid)
                 except Exception:
-                    ts_print(f"  [!] Чат {c_title} не найден или недоступен. Пропускаем.")
+                    print(f"\n  [!] Чат {c_title} не найден или недоступен. Пропускаем.")
+                    targets_done += 1
                     continue
 
                 # Приоритет: 1. Явный CLI флаг, 2. Значение из БД, 3. Глобальный дефолт (3)
                 target_window = context_window if context_window is not None else t.get('window_size', 3)
                 target_max_cluster = t.get('max_cluster', 10)
 
-                ts_print(f"  🔄 Обновление {u_name} в '{c_title}' (окно: {target_window}, сброс: {force_resync})...")
+                # Инициализируем статус для этого чата
+                update_status(user_name=u_name, chat_title=c_title)
                 
                 res = await _run_export_in_chat(
                     client, chat_entity, user, u_name, u_id, u_uname, 
                     writer, storage, as_json=as_json, 
                     context_window=target_window,
                     max_cluster=target_max_cluster,
-                    force_resync=force_resync
+                    force_resync=force_resync,
+                    status_callback=lambda n: update_status(new_count=n)
                 )
                 
                 if res[0] > 0:
                     storage.update_sync_timestamp(u_id, cid)
-                    ts_print(f"    📥 Добавлено: {res[0]} сообщений.")
-                else:
-                    ts_print(f"    ✅ Новых сообщений нет.")
+                
+                update_status(chat_finished=True)
 
         except Exception as e: 
-            ts_print(f"Ошибка при обновлении пользователя {uid}: {e}")
+            print(f"\n  [!] Ошибка при обновении пользователя {uid}: {e}")
         
+    print() # Переход на новую строку после завершения всех обновлений
+    ts_print(f"✅ Обновление завершено. Всего новых сообщений: {total_messages}")
     await client.disconnect()
 
 def run_export(config_dir: str, target_user: str, chat_id: Optional[str], output_file: Optional[str], **kwargs):

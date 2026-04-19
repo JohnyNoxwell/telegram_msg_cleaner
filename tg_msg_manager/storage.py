@@ -20,6 +20,11 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
+    def message_exists(self, chat_id: int, msg_id: int) -> bool:
+        """Проверить, существует ли сообщение в базе данных."""
+        pass
+
+    @abstractmethod
     def close(self):
         """Закрыть соединение с хранилищем."""
         pass
@@ -148,6 +153,15 @@ class SQLiteStorage(BaseStorage):
             ).fetchone()
             return row['last_id'] if row and row['last_id'] else 0
 
+    def message_exists(self, chat_id: int, msg_id: int) -> bool:
+        """Проверяет наличие сообщения по его уникальному ключу (chat_id, msg_id)."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM messages WHERE chat_id = ? AND msg_id = ?",
+                (chat_id, msg_id)
+            ).fetchone()
+            return row is not None
+
     def get_all_targets(self) -> List[Dict[str, Any]]:
         """Возвращает список всех уникальных пар (user_id, chat_id) с метаданными."""
         with self._get_connection() as conn:
@@ -182,6 +196,17 @@ class SQLiteStorage(BaseStorage):
         """Возвращает список всех целей, отмеченных для синхронизации."""
         with self._get_connection() as conn:
             rows = conn.execute("SELECT * FROM sync_targets WHERE is_active = 1").fetchall()
+            return [dict(row) for row in rows]
+
+    def get_unique_sync_users(self) -> List[Dict[str, Any]]:
+        """Возвращает список уникальных пользователей из целей синхронизации."""
+        with self._get_connection() as conn:
+            rows = conn.execute("""
+                SELECT DISTINCT user_id, author_name 
+                FROM sync_targets 
+                WHERE is_active = 1
+                ORDER BY author_name ASC
+            """).fetchall()
             return [dict(row) for row in rows]
 
     def remove_sync_target(self, user_id: int, chat_id: int):

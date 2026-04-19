@@ -112,6 +112,34 @@ def _log_path(settings: Settings) -> str:
         return settings.log_path
     return os.path.join(settings.config_dir, DEFAULT_LOG_NAME)
 
+def update_config_file(config_dir: str, new_data: dict):
+    """Обновляет или создает файл конфигурации с новыми данными."""
+    target_path = os.path.join(config_dir, "config.local.json")
+    
+    # Пытаемся прочитать существующий конфиг (локальный или основной)
+    current_data = {}
+    path_to_read = None
+    if os.path.exists(target_path):
+        path_to_read = target_path
+    else:
+        main_path = os.path.join(config_dir, "config.json")
+        if os.path.exists(main_path):
+            path_to_read = main_path
+            
+    if path_to_read:
+        with open(path_to_read, "r", encoding="utf-8") as f:
+            try:
+                current_data = json.load(f)
+            except:
+                pass
+                
+    # Обновляем поля
+    current_data.update(new_data)
+    
+    # Сохраняем всегда в config.local.json
+    with open(target_path, "w", encoding="utf-8") as f:
+        json.dump(current_data, f, indent=4, ensure_ascii=False)
+
 
 def load_settings(config_dir: str = ".") -> Settings:
     path = _config_path(config_dir)
@@ -255,6 +283,42 @@ def append_log(settings: Settings, line: str) -> None:
 def ts_print(msg: str) -> None:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{now}] {msg}")
+
+
+def validate_user_target(target: str) -> bool:
+    """
+    Проверяет, соответствует ли ввод формату Telegram ID или Username.
+    ID: только цифры.
+    Username: от 5 до 32 символов, буквы, цифры и подчеркивания.
+    """
+    import re
+    if not target:
+        return False
+    # Числовой ID
+    if target.isdigit() or (target.startswith("-") and target[1:].isdigit()):
+        return True
+    # Username: 5-32 символа, a-z, 0-9, _. Может начинаться с @.
+    clean_target = target[1:] if target.startswith("@") else target
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9_]{4,31}$", clean_target):
+        return True
+    return False
+
+
+def validate_int(val_str: str, name: str, min_val: Optional[int] = None, max_val: Optional[int] = None) -> int:
+    """
+    Преобразует строку в int и проверяет диапазон.
+    Бросает ValueError с понятным описанием, если валидация не прошла.
+    """
+    try:
+        vi = int(val_str)
+    except (ValueError, TypeError):
+        raise ValueError(f"Параметр '{name}' должен быть целым числом.")
+    
+    if min_val is not None and vi < min_val:
+        raise ValueError(f"Параметр '{name}' должен быть не меньше {min_val}.")
+    if max_val is not None and vi > max_val:
+        raise ValueError(f"Параметр '{name}' должен быть не больше {max_val}.")
+    return vi
 
 
 def message_passes_filters(msg, me_id: int, settings: Settings, min_date: Optional[datetime]) -> bool:
