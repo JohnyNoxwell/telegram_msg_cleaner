@@ -2,9 +2,10 @@ import asyncio
 import json
 import os
 import re
-from dataclasses import dataclass, asdict
+import shutil
+from dataclasses import dataclass, asdict, field
 from datetime import datetime
-from typing import Optional, List, Set, Dict, Tuple
+from typing import Optional, List, Set, Dict, Tuple, Any
 
 from telethon import TelegramClient, utils
 from telethon.tl.types import User, Message
@@ -12,36 +13,10 @@ from telethon.errors import ChatAdminRequiredError, RPCError
 from tqdm.asyncio import tqdm
 
 from .core import load_settings, Settings, ts_print, robust_client_start
+from .storage import SQLiteStorage
+from .models import MessageData
 
 MAX_MESSAGES_PER_FILE = 5000
-
-@dataclass
-class MessageData:
-    date: datetime
-    author_name: str
-    author_id: int
-    author_username: Optional[str]
-    text: str
-    msg_id: int = 0
-    chat_id: int = 0
-    chat_title: str = ""
-    is_reply: bool = False
-    reply_to_msg_id: Optional[int] = None
-    is_forward: bool = False
-    fwd_from_id: Optional[int] = None
-    fwd_from_name: Optional[str] = None
-    media_type: Optional[str] = None
-    edit_date: Optional[datetime] = None
-    reactions: List[str] = None
-    original_msg: Optional['MessageData'] = None
-
-    def to_dict(self):
-        d = asdict(self)
-        d['date'] = self.date.isoformat() if self.date else None
-        d['edit_date'] = self.edit_date.isoformat() if self.edit_date else None
-        if self.original_msg:
-            d['original_msg'] = self.original_msg.to_dict()
-        return d
 
 class FileRotateWriter:
     def __init__(self, base_path: str, as_json: bool = False, max_msgs: int = MAX_MESSAGES_PER_FILE):
@@ -102,47 +77,7 @@ class FileRotateWriter:
                 f.flush()
             self.current_count += msg_count
 
-class ExportStateManager:
-    def __init__(self, state_file: str = "export_state.json"):
-        self.state_file = state_file
-        self.state: Dict[str, Dict[str, any]] = self._load()
-
-    def _load(self) -> Dict[str, Dict[str, any]]:
-        if os.path.exists(self.state_file):
-            try:
-                with open(self.state_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                return {}
-        return {}
-
-    def _save(self):
-        with open(self.state_file, "w", encoding="utf-8") as f:
-            json.dump(self.state, f, ensure_ascii=False, indent=2)
-
-    def get_last_msg_id(self, user_id: int, chat_id: int) -> int:
-        u_id = str(user_id); c_id = str(chat_id)
-        return self.state.get(u_id, {}).get(c_id, 0)
-
-    def update_last_msg_id(self, user_id: int, chat_id: int, msg_id: int):
-        u_id = str(user_id); c_id = str(chat_id)
-        if u_id not in self.state: self.state[u_id] = {}
-        current = self.state[u_id].get(c_id, 0)
-        if isinstance(current, int) and msg_id > current:
-            self.state[u_id][c_id] = msg_id
-            self._save()
-            
-    def get_nicknames(self, user_id: int) -> List[str]:
-        return self.state.get(str(user_id), {}).get("__nicknames__", [])
-        
-    def add_nickname(self, user_id: int, nickname: str) -> bool:
-        u_id = str(user_id)
-        if u_id not in self.state: self.state[u_id] = {}
-        nicks = self.state[u_id].get("__nicknames__", [])
-        if nickname not in nicks:
-            nicks.append(nickname); self.state[u_id]["__nicknames__"] = nicks
-            self._save(); return True
-        return False
+# --- Helper Functions ---
 
 def clean_filename(name: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', '_', name).strip()
@@ -214,8 +149,17 @@ async def process_message(client: TelegramClient, entity, msg: Message, target_n
         reply_to_msg_id=msg.reply_to.reply_to_msg_id if msg.reply_to else None,
         is_forward=bool(msg.forward), fwd_from_id=fwd_id,
         fwd_from_name=msg.forward.from_name if msg.forward else None,
-        media_type=type(msg.media).__name__ if msg.media else None, edit_date=msg.edit_date
+        media_type=type(msg.media).__name__ if msg.media else None, edit_date=msg.edit_date,
+        reactions=[]
     )
+    
+    # Extract reactions
+    if msg.reactions and msg.reactions.results:
+        for r_count in msg.reactions.results:
+            if hasattr(r_count.reaction, 'emoticon'):
+                m_data.reactions.append(r_count.reaction.emoticon)
+            elif hasattr(r_count.reaction, 'document_id'):
+                m_data.reactions.append(f"custom_emoji_{r_count.reaction.document_id}")
     
     if m_data.is_reply and m_data.reply_to_msg_id:
         try:
@@ -229,12 +173,24 @@ async def process_message(client: TelegramClient, entity, msg: Message, target_n
 
 async def _run_export_in_chat(
     client: TelegramClient, entity, target_user, t_name: str, t_id: int, t_uname: Optional[str],
-    writer: FileRotateWriter, state_manager: ExportStateManager, as_json: bool = False, context_window: int = 0,
-    time_threshold: int = 120, max_window: int = 5, merge_gap: int = 2, max_cluster: int = 15,
-    status_callback: Optional[callable] = None
+    writer: Optional[FileRotateWriter], storage: SQLiteStorage,
+    as_json: bool = True, context_window: int = 3,
+    time_threshold: int = 120, max_window: int = 5, merge_gap: int = 2, max_cluster: int = 10,
+    status_callback: Optional[callable] = None, force_resync: bool = False
 ) -> Tuple[int, Optional[datetime], int]:
     chat_id = _get_chat_id(entity)
-    last_msg_id = state_manager.get_last_msg_id(t_id, chat_id)
+    chat_title = getattr(entity, 'title', '')
+    
+    # Регистрация цели в БД с текущими настройками
+    mode_str = 'deep' if context_window > 0 else 'normal'
+    storage.add_sync_target(t_id, chat_id, t_name, chat_title, mode=mode_str, window=context_window, max_cluster=max_cluster)
+    
+    # Источник истины — база данных. Если force_resync=True, начинаем с 0.
+    if force_resync:
+        last_msg_id = 0
+    else:
+        last_msg_id = storage.get_last_msg_id(t_id, chat_id)
+        
     count = 0; highest_id = last_msg_id; latest_date = None
 
     async def get_keywords(text):
@@ -254,14 +210,25 @@ async def _run_export_in_chat(
         nonlocal count, highest_id, latest_date
         blocks = []
         for m in messages:
-            data = await process_message(client, entity, m, t_name if m.sender_id == t_id else None)
-            blocks.append(format_export_block(data, as_json))
+            author_info = _get_author_info(m.sender) if hasattr(m, 'sender') else (None, None, None)
+            data = await process_message(client, entity, m, t_name if m.sender_id == t_id else None, target_id=t_id, target_uname=t_uname)
+            
+            # 1. Save to Files
+            if writer:
+                blocks.append(format_export_block(data, as_json))
+            
+            # 2. Save to Storage (DB)
+            if storage:
+                storage.save_message(data)
+                
             if m.id > highest_id: highest_id = m.id
             if latest_date is None or m.date > latest_date: latest_date = m.date
         
-        sep = "\n" if as_json else "\n\n" + "-" * 40 + "\n\n"
-        await writer.write_block(sep.join(blocks) + sep, len(blocks))
-        count += len(blocks)
+        if writer and blocks:
+            sep = "\n" if as_json else "\n\n" + "-" * 40 + "\n\n"
+            await writer.write_block(sep.join(blocks) + sep, len(blocks))
+            
+        count += len(messages) # We count all processed messages from target
         if status_callback: status_callback(len(blocks))
 
     if context_window == 0:
@@ -379,9 +346,15 @@ async def _get_target_dialogs(client: TelegramClient, settings: Settings, chat_i
         
     return await _get_all_dialogs(client)
 
-async def export_messages_async(settings: Settings, target_identifier: str, chat_identifier: Optional[str], output_file: Optional[str], as_json: bool = False, context_window: int = 0, **kwargs):
+async def export_messages_async(settings: Settings, target_identifier: str, chat_identifier: Optional[str], output_file: Optional[str], as_json: bool = True, context_window: int = 3, force_resync: bool = False, **kwargs):
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
     await robust_client_start(client)
+    
+    # Initialize Storage
+    db_name = f"{settings.account_name}_messages.db" if settings.account_name else "messages.db"
+    db_path = os.path.join(settings.config_dir, db_name)
+    storage = SQLiteStorage(db_path)
+    
     try:
         try: target_user = await client.get_entity(int(target_identifier))
         except ValueError: target_user = await client.get_entity(target_identifier)
@@ -400,10 +373,6 @@ async def export_messages_async(settings: Settings, target_identifier: str, chat
         
     ts_print(f"Пользователь: {t_name}. Чатов: {len(dialogs)}")
     
-    state_file = ("deep_" if context_window > 0 else "") + ("json_" if as_json else "") + "export_state.json"
-    state_manager = ExportStateManager(os.path.join(settings.config_dir, state_file))
-    state_manager.add_nickname(t_id, t_name)
-
     total_found = 0; chats_done = 0; sem = asyncio.Semaphore(10)
     
     def update_status(new_count=0, chat_finished=False):
@@ -415,12 +384,18 @@ async def export_messages_async(settings: Settings, target_identifier: str, chat
     async def process(chat):
         async with sem:
             try: 
-                res = await _run_export_in_chat(client, chat, target_user, t_name, t_id, t_uname, writer, state_manager, as_json, context_window, status_callback=lambda n: update_status(n), **kwargs)
+                res = await _run_export_in_chat(
+                    client, chat, target_user, t_name, t_id, t_uname, 
+                    writer, storage=storage, as_json=as_json, 
+                    context_window=context_window, 
+                    status_callback=lambda n: update_status(n),
+                    force_resync=force_resync, **kwargs
+                )
                 update_status(chat_finished=True)
                 return (chat.id, *res)
             except Exception as e: 
+                ts_print(f"\n  [!] Ошибка в чате {getattr(chat, 'title', chat.id)}: {e}")
                 update_status(chat_finished=True)
-                # ts_print(f"Ошибка при обработке чата {getattr(chat, 'title', chat.id)}: {e}")
                 return (None, 0, None, 0)
 
     # Initial print
@@ -429,92 +404,145 @@ async def export_messages_async(settings: Settings, target_identifier: str, chat
     print() # New line after status line
     
     total = sum(r[1] for r in results)
-    for cid, found, _, hid in results:
-        if cid and hid > 0: state_manager.update_last_msg_id(t_id, cid, hid)
     
     ts_print(f"Готово! Всего сообщений: {total}"); await client.disconnect()
 
-async def run_export_update_async(config_dir: str, as_json: bool = False, context_window: int = 0):
-    settings = load_settings(config_dir=config_dir); export_dir = "PUBLIC_GROUPS"
-    if not os.path.exists(export_dir): return
+async def run_export_update_async(config_dir: str, as_json: bool = True, context_window: Optional[int] = None, force_resync: bool = False):
+    settings = load_settings(config_dir=config_dir)
+    db_name = f"{settings.account_name}_messages.db" if settings.account_name else "messages.db"
+    db_path = os.path.join(settings.config_dir, db_name)
+    storage = SQLiteStorage(db_path)
     
-    # Собираем список всех файлов для обновления
-    update_tasks = []
-    for fn in os.listdir(export_dir):
-        # Ищем паттерн ID пользователя и опциональный флаг DEEP
-        # Поддерживаем .txt и .jsonl
-        m = re.search(r'_(\d+)(_DEEP)?\.(txt|jsonl)$', fn)
-        if m:
-            uid = int(m.group(1))
-            is_deep = bool(m.group(2))
-            is_json = m.group(3) == 'jsonl'
-            
-            # Определяем правильный файл состояния
-            s_file = ("deep_" if is_deep else "") + ("json_" if is_json else "") + "export_state.json"
-            
-            update_tasks.append({
-                'uid': uid,
-                'path': os.path.join(export_dir, fn),
-                'is_deep': is_deep,
-                'is_json': is_json,
-                'state_file': s_file
-            })
+    # 1. Получаем список активных целей из базы данных
+    active_targets = storage.get_active_sync_targets()
     
-    if not update_tasks:
-        ts_print("Файлы для обновления не найдены в PUBLIC_GROUPS/")
-        return
+    if not active_targets:
+        ts_print("⚠️ Активные цели для синхронизации в БД не найдены. Сначала запустите обычный 'export'.")
+        await client.disconnect(); return
 
     client = TelegramClient(settings.session_name, settings.api_id, settings.api_hash)
     await robust_client_start(client)
     
-    dialogs = await _get_target_dialogs(client, settings, None) 
-    if not dialogs:
-        ts_print(" [!] Не удалось найти чаты для обновления.")
-        await client.disconnect(); return
-
     sem = asyncio.Semaphore(10)
-    ts_print(f"🔄 Запуск массового обновления ({len(update_tasks)} файлов) через {len(dialogs)} чатов...")
+    ts_print(f"🔄 Смарт-обновление: запуск для {len(active_targets)} отслеживаемых пар (пользователь-чат)...")
     
-    for task in update_tasks:
-        try:
-            uid = task['uid']; opath = task['path']
-            is_json = task['is_json']; is_deep = task['is_deep']
-            
-            user = await client.get_entity(uid); name, tid, uname = _get_author_info(user)
-            writer = FileRotateWriter(opath, as_json=is_json)
-            state_manager = ExportStateManager(os.path.join(settings.config_dir, task['state_file']))
-            
-            total_found = 0; chats_done = 0
-            def update_status_upd(new_count=0, chat_finished=False):
-                nonlocal total_found, chats_done
-                if chat_finished: chats_done += 1
-                total_found += new_count
-                mode_str = "DEEP" if is_deep else "NORM"
-                fmt_str = "JSON" if is_json else "TXT"
-                print(f"\r🔄 [{fmt_str}/{mode_str}] {name}... [{chats_done}/{len(dialogs)} чатов] | 📥 Найдено: {total_found}", end="", flush=True)
+    # Группируем цели по пользователям, чтобы не пересоздавать клиента/сущности
+    from collections import defaultdict
+    user_groups = defaultdict(list)
+    for t in active_targets:
+        user_groups[t['user_id']].append(t)
 
-            async def process_update(chat):
-                async with sem:
-                    try: 
-                        ctx = 1 if is_deep else 0
-                        res = await _run_export_in_chat(client, chat, user, name, tid, uname, writer, state_manager, is_json, ctx, status_callback=lambda n: update_status_upd(n))
-                        update_status_upd(chat_finished=True)
-                        return (chat.id, *res)
-                    except Exception: 
-                        update_status_upd(chat_finished=True)
-                        return (None, 0, None, 0)
+    for uid, targets in user_groups.items():
+        try:
+            # Получаем актуальную информацию о пользователе один раз для группы чатов
+            try:
+                user = await client.get_entity(uid)
+                u_name, u_id, u_uname = _get_author_info(user)
+            except Exception:
+                u_name = targets[0]['author_name']; u_id = uid; u_uname = None
+                ts_print(f"  [!] Не удалось обновить сущность пользователя {uid}, используем имя из базы.")
+
+            safe_name = clean_filename(u_name)
+            ext = ".jsonl" if as_json else ".txt"
+            # Для имени файла в апдейте используем либо переданное окно, либо просто проверяем, было ли оно передано
+            # Если не передано, не добавляем суффикс (он уже есть в существующем файле или не нужен)
+            suffix = ""
+            if context_window is not None and context_window > 0:
+                suffix = "_DEEP"
             
-            update_status_upd()
-            update_results = await asyncio.gather(*[process_update(c) for c in dialogs])
-            print() # Сброс строки после завершения пользователя
+            opath = os.path.join("PUBLIC_GROUPS", f"Экспорт_{safe_name}_{u_id}{suffix}{ext}")
             
-            total_user_new = 0
-            for cid, found, _, hid in update_results:
-                if cid and hid > 0: state_manager.update_last_msg_id(uid, cid, hid)
-                total_user_new += found
-            ts_print(f"  Завершено для {name}: {total_user_new}")
-        except Exception as e: print(f"Ошибка {uid}: {e}")
+            writer = FileRotateWriter(opath, as_json=as_json)
+            
+            for t in targets:
+                cid = t['chat_id']
+                c_title = t['chat_title'] or f"Chat_{cid}"
+                
+                try:
+                    chat_entity = await client.get_entity(cid)
+                except Exception:
+                    ts_print(f"  [!] Чат {c_title} не найден или недоступен. Пропускаем.")
+                    continue
+
+                # Приоритет: 1. Явный CLI флаг, 2. Значение из БД, 3. Глобальный дефолт (3)
+                target_window = context_window if context_window is not None else t.get('window_size', 3)
+                target_max_cluster = t.get('max_cluster', 10)
+
+                ts_print(f"  🔄 Обновление {u_name} в '{c_title}' (окно: {target_window}, сброс: {force_resync})...")
+                
+                res = await _run_export_in_chat(
+                    client, chat_entity, user, u_name, u_id, u_uname, 
+                    writer, storage, as_json=as_json, 
+                    context_window=target_window,
+                    max_cluster=target_max_cluster,
+                    force_resync=force_resync
+                )
+                
+                if res[0] > 0:
+                    storage.update_sync_timestamp(u_id, cid)
+                    ts_print(f"    📥 Добавлено: {res[0]} сообщений.")
+                else:
+                    ts_print(f"    ✅ Новых сообщений нет.")
+
+        except Exception as e: 
+            ts_print(f"Ошибка при обновлении пользователя {uid}: {e}")
+        
     await client.disconnect()
 
 def run_export(config_dir: str, target_user: str, chat_id: Optional[str], output_file: Optional[str], **kwargs):
     asyncio.run(export_messages_async(load_settings(config_dir), target_user, chat_id, output_file, **kwargs))
+
+def remove_user_data(config_dir: str, user_id: str):
+    settings = load_settings(config_dir=config_dir)
+    db_name = f"{settings.account_name}_messages.db" if settings.account_name else "messages.db"
+    db_path = os.path.join(settings.config_dir, db_name)
+    storage = SQLiteStorage(db_path)
+    
+    try:
+        u_id_int = int(user_id)
+    except ValueError:
+        ts_print(f" [!] Ошибка: ID пользователя должен быть числом (получено '{user_id}').")
+        return
+
+    # 1. Database Purge
+    msg_count, target_count = storage.delete_user_data(u_id_int)
+    ts_print(f" --- Очистка БД завершена ---")
+    ts_print(f" Удалено сообщений: {msg_count}")
+    ts_print(f" Удалено целей синхронизации: {target_count}")
+
+    # 2. Filesystem Cleanup
+    dirs_to_scan = ["PUBLIC_GROUPS", "PRIVAT_DIALOGS"]
+    deleted_files = 0
+    
+    # Ищем файлы, содержащие _ID (например, Экспорт_Имя_12345.jsonl)
+    pattern = f"_{u_id_int}"
+    
+    for dname in dirs_to_scan:
+        if not os.path.exists(dname): continue
+        for root, dirs, files in os.walk(dname):
+            # Проверка файлов
+            for fname in files:
+                if pattern in fname:
+                    fpath = os.path.join(root, fname)
+                    try:
+                        os.remove(fpath)
+                        deleted_files += 1
+                        ts_print(f" [x] Удален файл: {fpath}")
+                    except Exception as e:
+                        ts_print(f" [!] Ошибка удаления файла {fpath}: {e}")
+            
+            # Проверка директорий (актуально для PRIVAT_DIALOGS)
+            for d in list(dirs):
+                if pattern in d:
+                    dpath = os.path.join(root, d)
+                    try:
+                        shutil.rmtree(dpath)
+                        deleted_files += 1
+                        ts_print(f" [x] Удалена папка: {dpath}")
+                        dirs.remove(d) # Чтобы os.walk не пытался зайти в удаленную папку
+                    except Exception as e:
+                        ts_print(f" [!] Ошибка удаления папки {dpath}: {e}")
+
+    ts_print(f" --- Очистка файлов завершена ---")
+    ts_print(f" Удалено объектов: {deleted_files}")
+    ts_print(f"\nВсе данные для пользователя {u_id_int} стерты.")

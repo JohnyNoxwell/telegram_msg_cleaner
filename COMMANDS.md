@@ -27,35 +27,41 @@ python -m tg_msg_manager.cli clean --dry-run
 ```
 
 ### 📥 2. Режим экспорта (`export`)
-Ищет все сообщения заданного пользователя и выкачивает их в удобный для чтения текстовый файл, сохраняя хронологию и вложенные ответы (replies). Поиск выполняется **в 10 потоков**, обеспечивая сверхбыструю выгрузку в папку `PUBLIC_GROUPS`.
+Ищет все сообщения заданного пользователя и выкачивает их. По умолчанию включен **Deep Search Mode** (глубокий контекст). Сообщения сохраняются в `messages.db` и файл в папке `PUBLIC_GROUPS`.
 
 **Флаги и Аргументы:**
 * `--user-id` *(Обязательный)* — ID или username целевого пользователя.
-* `--chat-id` *(Опциональный)* — ID или username конкретной группы для поиска. Если не указать — скрипт проверит **все** ваши чаты.
-* `--out` *(Опциональный)* — Свое имя файла.
-* `--json` — 📦 Экспорт в формате **JSONL** (одна строка — один JSON-объект). Рекомендуется для дальнейшего анализа.
-* `--deep` — 🧬 **Deep Search Mode.** Включает поиск контекста. Скрипт найдет сообщения цели и "притянет" к ним реплики и соседние сообщения.
-
-**Настройка Deep Mode (тонкая наладка):**
-* `--context-window` — Размер окна контекста (0 — только сообщения цели, 1+ — искать вокруг).
-* `--time-threshold` — Порог связи (сек). Если сообщения идут с таким разрывом, они считаются связанными (дефолт: 120).
-* `--max-cluster` — Ограничение количества сообщений в одном фрагменте контекста (дефолт: 15).
+* `--flat` — ⚡️ **Плоский экспорт.** Отключить контекст (только сообщения автора). Удобно для быстрой выгрузки без лишних данных.
+* `--force-resync` — 🧨 **Сброс истории.** Игнорировать сохраненный прогресс и перекачать всю историю реплик заново (полезно при изменении глубины).
+* `--context-window` — Размер окна контекста (Золотой Стандарт: **3**).
+* `--max-cluster` — Макс. сообщений в одном кластере контекста (дефолт: **10**).
+* `--json` — Экспорт в формате **JSONL**.
 
 **Примеры использования:**
 ```bash
-# Обычный текстовый экспорт по всем чатам
+# Стандартный экспорт с контекстом (window 3)
 tg-msg-manager export --user-id 1234567
 
-# Глубокий экспорт в JSONL из конкретной группы
-tg-msg-manager export --user-id "spammer" --chat-id -100123 --json --deep
+# Глубокий аудит: перекачать историю заново с окном 5
+tg-msg-manager export --user-id "spammer" --force-resync --context-window 5
 ```
 
-### 🔄 3. Режим обновления (`update`)
-Магическая команда. Автоматически сканирует `PUBLIC_GROUPS` и докачивает новые сообщения. Скрипт сам понимает, какой файл был в JSONL, а какой в TXT, и кто был выгружен в режиме DEEP.
+### 🔄 3. Режим обновления (`update`) — *Smart Sync*
+Теперь это полностью автономная команда. Она больше не сканирует файлы, а берет список целей и их настройки прямо из базы данных.
 
-**Флаги:**
-* `--json` — Обновлять только файлы `.jsonl`.
-* `--deep` — Обновлять в режиме глубокого поиска контекста.
+**Особенности:**
+* **Persistent Config**: Если вы один раз выгрузили пользователя с окном 5, `update` всегда будет использовать 5 для него.
+* **Force Update**: `update --force-resync` заставит скрипт перепроверить всю историю по всем отслеживаемым пользователям.
+* **Overrides**: Любой флаг (например, `--context-window`) переопределит настройки в базе для этого и всех последующих запусков.
+
+**Примеры использования:**
+```bash
+# Просто обновить всё по графику
+tg-msg-manager update
+
+# Массово перевести всех на плоский экспорт и обновить
+tg-msg-manager update --flat
+```
 
 **Пример использования:**
 ```bash
@@ -98,7 +104,21 @@ PRIVAT_DIALOGS/
 tg-msg-manager schedule
 ```
 
-### 🌍 6. Глобальные Флаги
+### 🗑️ 6. Режим удаления данных (`delete`)
+Полностью стирает локальную историю и настройки для конкретного пользователя.
+> ⚠️ **Внимание**: Это действие удалит все сообщения из `messages.db` и все файлы в `PUBLIC_GROUPS`/`PRIVAT_DIALOGS` по ID цели.
+
+**Флаги и Аргументы:**
+* `--user-id` *(Обязательный)* — ID пользователя для удаления.
+* `--yes` — Пропуск подтверждения.
+
+**Примеры использования:**
+```bash
+tg-msg-manager delete --user-id 1234567
+tg-msg-manager delete --user-id 999 --yes
+```
+
+### 🌍 7. Глобальные Флаги
 **`--config-dir`** — Задает путь к папке с вашим конфигурационным файлом. 
 ```bash
 tg-msg-manager --config-dir /etc/tg_cleaner export --user-id 12345
@@ -126,35 +146,41 @@ python -m tg_msg_manager.cli clean --dry-run
 ```
 
 ### 📥 2. Export Mode (`export`)
-Locates a target user's entire footprint and extracts their messages into elegantly formatted text files, complete with chronological order and embedded replies. Lookups are executed with a **concurrency pool of 10** for ultra-fast speeds, saving all data to an auto-created `PUBLIC_GROUPS` folder.
+Locates target users and extracts their messages. **Deep Search Mode** (window 3) is enabled by default. All data is synchronized between `messages.db` and local files.
 
 **Flags & Arguments:**
-* `--user-id` *(Required)* — The numeric ID or username of the targeted entity.
-* `--chat-id` *(Optional)* — Restrict scanning to a specific chat. If omitted, performs a global parallel scan.
-* `--out` *(Optional)* — A custom filename for the output.
-* `--json` — 📦 Export in **JSONL** format (one line per message object). Preferred for data analysis.
-* `--deep` — 🧬 **Deep Search Mode.** Enables context retrieval. Finds target messages and stitches surrounding conversation fragments.
-
-**Deep Mode Tuning:**
-* `--context-window` — Context size (0 - target only, 1+ - find neighbors).
-* `--time-threshold` — Connection threshold in seconds (default: 120).
-* `--max-cluster` — Message limit per context fragment (default: 15).
+* `--user-id` *(Required)* — Numeric ID or username.
+* `--flat` — ⚡️ **Flat Export.** Disable context (author messages only). Saves space and time.
+* `--force-resync` — 🧨 **Re-scan History.** Ignores current progress and re-downloads the entire history (useful for updating depth).
+* `--context-window` — Context size (Gold Standard: **3**).
+* `--max-cluster` — Message limit per context fragment (default: **10**).
+* `--json` — Export in **JSONL** format.
 
 **Examples:**
 ```bash
-# Standard text export across all chats
+# Standard export with context (window 3)
 tg-msg-manager export --user-id 1234567
 
-# Deep JSONL export from a specific group
-tg-msg-manager export --user-id "spammer" --chat-id -100123 --json --deep
+# Deep audit: re-fetch history with window 5
+tg-msg-manager export --user-id "spammer" --force-resync --context-window 5
 ```
 
-### 🔄 3. Update Mode (`update`)
-The smart updater. Scans your `PUBLIC_GROUPS` cache and performs high-concurrency fetching of new data. It automatically detects if a file was JSONL or TXT and if it was a Deep or Normal export.
+### 🔄 3. Update Mode (`update`) — *Smart Sync*
+A fully autonomous command. It retrieves targets and their individual configurations directly from the SQLite database.
 
-**Flags:**
-* `--json` — Update only `.jsonl` files.
-* `--deep` — Update in deep context search mode.
+**Key Features:**
+* **Persistent Config**: Once an export is performed with a specific depth, `update` will remember and reuse those settings forever.
+* **Force Update**: `update --force-resync` triggers a full historical re-audit for all registered targets.
+* **Overrides**: Passing any flag (e.g., `--context-window`) will override the stored database setting for this and future runs.
+
+**Examples:**
+```bash
+# Standard scheduled sync
+tg-msg-manager update
+
+# Bulk switch to flat exports
+tg-msg-manager update --flat
+```
 
 **Examples:**
 ```bash
@@ -197,7 +223,21 @@ The state-of-the-art "self-destruct timer" setup. By asking a few simple questio
 tg-msg-manager schedule
 ```
 
-### 🌍 6. Global Flags
+### 🗑️ 6. Data Disposal Mode (`delete`)
+Purges all local history and settings for a specific target.
+> ⚠️ **Warning**: This action erases all messages from `messages.db` and any files/folders in `PUBLIC_GROUPS`/`PRIVAT_DIALOGS` belonging to this ID.
+
+**Flags & Arguments:**
+* `--user-id` *(Required)* — Target ID to purge.
+* `--yes` — Bypasses the confirmation prompt.
+
+**Examples:**
+```bash
+tg-msg-manager delete --user-id 1234567
+tg-msg-manager delete --user-id 999 --yes
+```
+
+### 🌍 7. Global Flags
 **`--config-dir`** — Instructs the tool to fetch its configuration from a specific directory path.
 ```bash
 tg-msg-manager --config-dir /etc/tg_cleaner clean --apply --yes

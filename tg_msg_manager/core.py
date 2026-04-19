@@ -74,6 +74,7 @@ class Settings:
     api_id: int
     api_hash: str
     session_name: str = "tg_delete_my_msgs"
+    account_name: Optional[str] = None
 
     dry_run: bool = True
     min_date_days_ago: Optional[int] = None
@@ -122,7 +123,25 @@ def load_settings(config_dir: str = ".") -> Settings:
         )
 
     with open(path, "r", encoding="utf-8") as f:
-        raw = json.load(f)
+        try:
+            raw = json.load(f)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Ошибка в формате JSON файла конфигурации: {e}")
+
+    # 1. Validation Layer (1.5.1)
+    missing = []
+    if "api_id" not in raw: missing.append("api_id")
+    if "api_hash" not in raw: missing.append("api_hash")
+    if missing:
+        raise RuntimeError(f"Ошибка конфигурации: Отсутствуют обязательные поля: {', '.join(missing)}")
+
+    # 2. Extract account_name for identity separation (1.5.2)
+    acc_name = raw.get("account_name")
+    sess_name = raw.get("session_name", "tg_delete_my_msgs")
+    if acc_name:
+        # If account_name is provided, we namespace the session unless it's explicitly fixed
+        if "session_name" not in raw:
+            sess_name = f"{acc_name}_session"
 
     def _to_set(name: str) -> Optional[Set[int]]:
         v = raw.get(name)
@@ -144,7 +163,8 @@ def load_settings(config_dir: str = ".") -> Settings:
     return Settings(
         api_id=int(raw["api_id"]),
         api_hash=str(raw["api_hash"]),
-        session_name=raw.get("session_name", "tg_delete_my_msgs"),
+        session_name=sess_name,
+        account_name=acc_name,
         dry_run=bool(raw.get("dry_run", True)),
         min_date_days_ago=raw.get("min_date_days_ago"),
         include_chats=_to_set("include_chats"),

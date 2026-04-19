@@ -7,7 +7,9 @@ config.json
 config.local.json
 delete_log.txt
 *.log
+messages.db*
 LOGS/
+TASKS/
 tg_msg_manager_state.json
 tg_msg_manager_state.json.tmp
 export_state.json
