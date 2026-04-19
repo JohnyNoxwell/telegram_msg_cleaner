@@ -42,9 +42,19 @@ def main() -> None:
     export_parser.add_argument("--user-id", required=True, help="ID или username пользователя, сообщения которого нужно выгрузить.")
     export_parser.add_argument("--chat-id", default=None, help="ID или username конкретного чата (если не указано, ищет по всем чатам).")
     export_parser.add_argument("--out", default=None, help="Путь до файла выгрузки (по умолчанию 'Экспорт_{Ник}_{ID}.txt').")
+    export_parser.add_argument("--json", action="store_true", help="Выгрузить в формате JSONL с разбиением по 5000 сообщений.")
+    export_parser.add_argument("--deep", action="store_true", help="Включить глубокий поиск контекста (DEEP).")
+    export_parser.add_argument("--context-window", type=int, default=0, help="Размер окна контекста (0 - отключено).")
+    export_parser.add_argument("--time-threshold", type=int, default=120, help="Временной порог связи (сек).")
+    export_parser.add_argument("--max-window", type=int, default=5, help="Макс. сообщений в одну сторону.")
+    export_parser.add_argument("--merge-gap", type=int, default=2, help="Разрыв для объединения окон.")
+    export_parser.add_argument("--max-cluster", type=int, default=15, help="Макс. сообщений в кластере.")
 
     # --- Подпарсер UPDATE ---
-    update_parser = subparsers.add_parser("update", help="Инкрементально обновить все собранные экспорты в папке PUBLIC_GROUPS")
+    update_parser = subparsers.add_parser("update", help="Инкрементально обновить все собранные экспорты")
+    update_parser.add_argument("--json", action="store_true", help="Обновлять файлы .jsonl")
+    update_parser.add_argument("--deep", action="store_true", help="Обновлять с глубоким поиском.")
+    update_parser.add_argument("--context-window", type=int, default=0, help="Размер окна контекста.")
 
     # --- Подпарсер EXPORT-PM ---
     export_pm_parser = subparsers.add_parser("export-pm", help="Экспорт приватного диалога (текст + медиа)")
@@ -83,15 +93,19 @@ def main() -> None:
             assume_yes=getattr(args, 'yes', False),
         )
     elif command == "export":
+        ctx_win = args.context_window
+        if args.deep and ctx_win == 0: ctx_win = 1
         run_export(
-            config_dir=config_dir,
-            target_user=args.user_id,
-            chat_id=args.chat_id,
-            output_file=args.out
+            config_dir=config_dir, target_user=args.user_id, chat_id=args.chat_id, output_file=args.out,
+            as_json=args.json, context_window=ctx_win, time_threshold=args.time_threshold,
+            max_window=args.max_window, merge_gap=args.merge_gap, max_cluster=args.max_cluster
         )
     elif command == "update":
-        from .exporter import run_export_update
-        run_export_update(config_dir=config_dir)
+        from .exporter import run_export_update_async
+        import asyncio
+        ctx_win = args.context_window
+        if args.deep and ctx_win == 0: ctx_win = 1
+        asyncio.run(run_export_update_async(config_dir=config_dir, as_json=args.json, context_window=ctx_win))
     elif command == "export-pm":
         from .pm_exporter import run_export_pm
         run_export_pm(config_dir=config_dir, target_user=args.user_id)

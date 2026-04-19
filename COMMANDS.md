@@ -30,21 +30,32 @@ python -m tg_msg_manager.cli clean --dry-run
 Ищет все сообщения заданного пользователя и выкачивает их в удобный для чтения текстовый файл, сохраняя хронологию и вложенные ответы (replies). Поиск выполняется **в 10 потоков**, обеспечивая сверхбыструю выгрузку в папку `PUBLIC_GROUPS`.
 
 **Флаги и Аргументы:**
-* `--user-id` *(Обязательный)* — ID или username (ник) целевого пользователя.
-* `--chat-id` *(Опциональный)* — ID или username конкретной группы для поиска. Если не указать — скрипт проверит **абсолютно все** ваши чаты.
-* `--out` *(Опциональный)* — Свое имя текстового файла вместо сгенерированного автоматически `Экспорт_Имя_ID.txt`.
+* `--user-id` *(Обязательный)* — ID или username целевого пользователя.
+* `--chat-id` *(Опциональный)* — ID или username конкретной группы для поиска. Если не указать — скрипт проверит **все** ваши чаты.
+* `--out` *(Опциональный)* — Свое имя файла.
+* `--json` — 📦 Экспорт в формате **JSONL** (одна строка — один JSON-объект). Рекомендуется для дальнейшего анализа.
+* `--deep` — 🧬 **Deep Search Mode.** Включает поиск контекста. Скрипт найдет сообщения цели и "притянет" к ним реплики и соседние сообщения.
+
+**Настройка Deep Mode (тонкая наладка):**
+* `--context-window` — Размер окна контекста (0 — только сообщения цели, 1+ — искать вокруг).
+* `--time-threshold` — Порог связи (сек). Если сообщения идут с таким разрывом, они считаются связанными (дефолт: 120).
+* `--max-cluster` — Ограничение количества сообщений в одном фрагменте контекста (дефолт: 15).
 
 **Примеры использования:**
 ```bash
-# Глобальный сканер по всем вашим чатам
-tg-msg-manager export --user-id 5378570247
+# Обычный текстовый экспорт по всем чатам
+tg-msg-manager export --user-id 1234567
 
-# Точечный сканер внутри одной конкретной группы
-tg-msg-manager export --user-id "spammer22" --chat-id -100123456789
+# Глубокий экспорт в JSONL из конкретной группы
+tg-msg-manager export --user-id "spammer" --chat-id -100123 --json --deep
 ```
 
 ### 🔄 3. Режим обновления (`update`)
-Магическая команда. Автоматически сканирует вашу папку `PUBLIC_GROUPS` и **параллельно** загружает *новые* сообщения для **каждого** ранее выгруженного пользователя. Автоматически фиксирует смену никнеймов и записывает краткий отчет проделанной работы в `LOGS/changelog.txt`.
+Магическая команда. Автоматически сканирует `PUBLIC_GROUPS` и докачивает новые сообщения. Скрипт сам понимает, какой файл был в JSONL, а какой в TXT, и кто был выгружен в режиме DEEP.
+
+**Флаги:**
+* `--json` — Обновлять только файлы `.jsonl`.
+* `--deep` — Обновлять в режиме глубокого поиска контекста.
 
 **Пример использования:**
 ```bash
@@ -119,20 +130,31 @@ Locates a target user's entire footprint and extracts their messages into elegan
 
 **Flags & Arguments:**
 * `--user-id` *(Required)* — The numeric ID or username of the targeted entity.
-* `--chat-id` *(Optional)* — Restrict scanning to a specific chat ID/username. If omitted, performs a **global parallel scan across all your chats**.
+* `--chat-id` *(Optional)* — Restrict scanning to a specific chat. If omitted, performs a global parallel scan.
 * `--out` *(Optional)* — A custom filename for the output.
+* `--json` — 📦 Export in **JSONL** format (one line per message object). Preferred for data analysis.
+* `--deep` — 🧬 **Deep Search Mode.** Enables context retrieval. Finds target messages and stitches surrounding conversation fragments.
+
+**Deep Mode Tuning:**
+* `--context-window` — Context size (0 - target only, 1+ - find neighbors).
+* `--time-threshold` — Connection threshold in seconds (default: 120).
+* `--max-cluster` — Message limit per context fragment (default: 15).
 
 **Examples:**
 ```bash
-# Global parallel scan across all your joined communities
-tg-msg-manager export --user-id 5378570247
+# Standard text export across all chats
+tg-msg-manager export --user-id 1234567
 
-# Targeted extraction in a designated group
-tg-msg-manager export --user-id "spammer22" --chat-id -100123456789
+# Deep JSONL export from a specific group
+tg-msg-manager export --user-id "spammer" --chat-id -100123 --json --deep
 ```
 
 ### 🔄 3. Update Mode (`update`)
-A magic bullet command. It automatically reads your `PUBLIC_GROUPS` cache and performs a **highly concurrent** fetch of only the *newest* messages for every previously extracted user. It also dynamically tracks nickname changes into the document headers and generates a `LOGS/changelog.txt` summary file upon completion.
+The smart updater. Scans your `PUBLIC_GROUPS` cache and performs high-concurrency fetching of new data. It automatically detects if a file was JSONL or TXT and if it was a Deep or Normal export.
+
+**Flags:**
+* `--json` — Update only `.jsonl` files.
+* `--deep` — Update in deep context search mode.
 
 **Examples:**
 ```bash

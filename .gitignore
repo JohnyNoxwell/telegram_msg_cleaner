@@ -11,6 +11,10 @@ LOGS/
 tg_msg_manager_state.json
 tg_msg_manager_state.json.tmp
 export_state.json
+deep_export_state.json
+deep_json_export_state.json
+export_improvement_plan.md
+json_export_state.json
 .DS_store
 # Виртуальные окружения
 venv/
@@ -18,6 +22,7 @@ venv/
 .venv-test/
 PUBLIC_GROUPS/
 PRIVAT_DIALOGS/
+scratch/
 pm_export_state.json
 # Артефакты Python
 __pycache__/

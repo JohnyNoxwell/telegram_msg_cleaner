@@ -16,14 +16,14 @@ CLI-утилита на базе `telethon` для продвинутого уп
   > Поддерживает `dry-run` (безопасную репетицию), фильтрацию по датам, типу контента (медиа/текст) и настройку белых/черных списков чатов. Грамотно обходит ошибки `FloodWait`.
   
 * 📥 **Умный экспорт (`export`)**
-  Параллельный поиск и загрузка истории сообщений заданного пользователя. Сохраняет хронологию, контекст бесед (реплаи) и историю изменения никнеймов. 
-  > ⚠️ **Важно:** Поиск происходит исключительно в тех чатах и группах, к которым имеет доступ ваш аккаунт. Все выгрузки автоматически складываются в папку `PUBLIC_GROUPS`.
-  
+  Параллельный поиск и выгрузка истории сообщений. Поддерживает обычный текстовый режим или структурированный **JSONL**.
+  > ⚠️ **Deep Mode:** Уникальный режим "глубокого поиска", который находит не только сообщения цели, но и восстанавливает контекст беседы (реплики и соседние сообщения) вокруг каждого найденного фрагмента.
+
 * 🔄 **Массовое обновление (`update`)**
-  Инкрементальное обновление базы экспортированных пользователей в один клик. Скрипт сам считывает профили из `PUBLIC_GROUPS` и докачивает только свежие сообщения, ведя подробный `LOGS/changelog.txt`. За счет многопоточности работает в 10 раз быстрее!
+  Докачивает новые сообщения для всех локальных архивов в один клик. Умный сканер сам определяет формат (Text/JSONL) и режим (Normal/Deep) каждого файла и обновляет их соответствующим образом.
 
 * ⏳ **Таймер самоуничтожения (`schedule`)**
-  Позволяет скрипту в один клик превратиться в невидимого системного демона. Укажите интервал (например, каждые 12 часов), и он сам зарегистрируется в `launchd` / `cron` / `Windows Task Scheduler` для методичного удаления ваших сообщений в полном фоне!
+  Позволяет скрипту превратиться в системного демона. Укажите интервал, и он сам зарегистрируется в `launchd` / `cron` / `Windows Task Scheduler` для методичной очистки ваших сообщений в полном фоне!
 
 * 💬 **Архив личной переписки (`export-pm`)**
   Полное резервное копирование приватного диалога с любым пользователем: текст и **все медиафайлы** (фото, видео, кружки, голосовые, GIF-анимации, документы). Медиа автоматически сортируются по папкам, лимит 50 МБ на файл, инкрементальное обновление.
@@ -115,14 +115,14 @@ A `telethon`-based CLI utility for advanced Telegram message management. Forget 
   > Supports `dry-run` rehearsal mode, specific date filtering, message type filtering, and chat white/blacklists. Intelligently prevents and handles `FloodWait` errors.
   
 * 📥 **Message Exporting (`export`)**
-  Fast and highly concurrent scanning to download a specific user's chat history. It preserves chronological order, nickname histories, and the context of replied messages.
-  > ⚠️ **Note:** Exporting via user ID is strictly limited to the groups that your own account has joined. All generated text files are automatically saved into the `PUBLIC_GROUPS` directory.
-  
+  Fast concurrent scanning. Supports both human-readable text and structured **JSONL** formats for further analysis.
+  > ⚠️ **Deep Mode:** A unique "context-aware" export that not only finds target messages but also retrieves surrounding conversations and replies to reconstruct the full context of every interaction.
+
 * 🔄 **Mass Updater (`update`)**
-  One-click incremental update. The script automatically reads previously exported profiles from the `PUBLIC_GROUPS` folder and fetches only their newly written messages, logging all changes accurately to `LOGS/changelog.txt`.
+  One-click incremental update. The smart scanner automatically detects the format (Text/JSONL) and mode (Normal/Deep) of every local file and synchronizes them with the latest Telegram data.
 
 * ⏳ **Self-Destruct Daemon (`schedule`)**
-  Instantly metamorphosize the tool into an invisible background orchestrator. You specify an interval (e.g. every 12 hours) and it registers natively with `launchd` / `cron` / `Task Scheduler` to scrub your footprint automatically in complete stealth mode.
+  Instantly metamorphosize the tool into a background orchestrator. It registers natively with `launchd` / `cron` / `Task Scheduler` to scrub your footprint automatically in complete stealth mode.
 
 * 💬 **Private Chat Archive (`export-pm`)**
   Full backup of private conversations with any user: text and **all media files** (photos, videos, circles, voice messages, GIFs, documents). Media is auto-sorted into categorized folders, with a 50 MB per-file limit and incremental updates.

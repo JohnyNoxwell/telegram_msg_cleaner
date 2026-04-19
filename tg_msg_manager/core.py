@@ -94,6 +94,7 @@ class Settings:
 
     config_dir: str = "."
     log_path: Optional[str] = None
+    default_export_chats: Optional[List[str]] = None
 
 
 def _config_path(config_dir: str) -> str:
@@ -157,6 +158,7 @@ def load_settings(config_dir: str = ".") -> Settings:
         batch_size=int(raw.get("batch_size", 50)),
         config_dir=config_dir,
         log_path=raw.get("log_path"),
+        default_export_chats=raw.get("default_export_chats", [])
     )
 
 

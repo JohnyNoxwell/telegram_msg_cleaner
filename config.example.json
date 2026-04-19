@@ -16,6 +16,7 @@
 
   "base_delay_sec": 0.15,
   "max_delay_sec": 5.0,
-  "batch_size": 50
+  "batch_size": 50,
+  "default_export_chats": []
 }
 
