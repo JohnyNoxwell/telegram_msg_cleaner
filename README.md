@@ -1,4 +1,4 @@
-# 🧹 Telegram Message Cleaner & Exporter
+# 🧹 TG_MSG_MNGR: Advanced Telegram Suite
 
 [🇷🇺 Русская версия](#русский) | [🇬🇧 English Version](#english)
 
@@ -7,116 +7,41 @@
 <a id="русский"></a>
 ## 🇷🇺 Русский
 
-CLI-утилита на базе `telethon` для продвинутого управления сообщениями в Telegram. Забудьте о рутинной ручной чистке: скрипт позволяет массово и безопасно очищать историю своих сообщений или молниеносно выгружать чужую.
+**TG_MSG_MNGR** — это мощная экосистема для управления вашим цифровым следом в Telegram. Переосмысленная в версии 4.0, утилита превратилась из простого скрипта в полноценное консольное Android-подобное приложение с фокусом на UX, скорость и надежность.
+
+### 💎 Преимущества версии 4.0 (UX Revolution)
+
+* 🎨 **Cyberpunk UI**: Полноцветная 24-битная ANSI градиентная шапка и премиальный дизайн интерфейса.
+* ⚡ **Интерактивность**: Навигация в одно касание (нажатие цифры сразу выполняет действие) и поддержка клавиши **ESC** для мгновенной отмены или возврата назад.
+* 🏗️ **Модульная архитектура**: Полностью переписанное ядро на базе сервисов (`ExportService`, `CleanerService`, `ArchiveService`), что гарантирует стабильность и легкость обновлений.
+* 📖 **Контекстное обучение**: Каждое подменю снабжено краткой справкой о том, как работает конкретный алгоритм.
 
 ### 🌟 Главные функции
 
-* 🧹 **Тотальная очистка (`clean`)**
-  Удаляет **только ваши** сообщения изо всех групп и каналов, в которых вы состоите на данный момент. 
-  > Поддерживает `dry-run` (безопасную репетицию), фильтрацию по датам, типу контента (медиа/текст) и настройку белых/черных списков чатов. Грамотно обходит ошибки `FloodWait`.
+* 🧹 **Глобальная очистка (`clean`)**
+  Удаляет **только ваши** сообщения изо всех чатов. Поддерживает белые списки и умный обход FloodWait.
   
-* 🗄️ **SQLite база данных (New!)**
-  Все ваши сообщения теперь автоматически сохраняются в структурированную базу данных `messages.db` (или `<имя_аккаунта>_messages.db`). 
-  > Это гарантирует молниеносный поиск, отсутствие дубликатов и надежное хранение всех метаданных (реакции, история правок, контекст).
+* 📥 **Умный экспорт с контекстом (`export`)**
+  Собирает сообщения цели вместе с «окном» беседы (реплики до и после), восстанавливая полную картину диалога.
 
-* 📥 **Умный экспорт (`export`)** — *Теперь Deep-First по умолчанию!*
-  Скрипт сразу ищет не только сообщения цели, но и восстанавливает **контекст беседы** (3 сообщения вокруг каждой реплики). Больше не нужно указывать флаг `--deep` вручную.
-  > Данные сохраняются параллельно в локальный файл (Text/JSONL) и в базу данных SQLite.
+* 🗄️ **SQLite Storage**
+  Все данные превращаются в структурированную базу `messages.db`. Никакого дублирования, мгновенный доступ к миллионам записей.
 
-* 🔄 **Автономное обновление (`update`)**
-  Обновляет все ваши архивы в один клик. Скрипт использует базу данных как "источник истины", мгновенно определяя новые сообщения и **автоматически применяя настройки из базы**, которые были заданы при первом экспорте.
+* 💬 **Медиа-архив лички (`export-pm`)**
+  Полный бэкап приватного чата: текст и все медиафайлы (фото, видео, документы), отсортированные по категориям.
 
-* 🧬 **Золотой стандарт (Gold Standard)**
-  В систему вшиты оптимальные параметры: `context-window 3` и `max-cluster 10`. Это позволяет получить исчерпывающий профиль пользователя с минимальным объемом лишних данных.
-
-* ⏳ **Таймер самоуничтожения (`schedule`)**
-  Позволяет скрипту превратиться в системного демона. Укажите интервал, и он сам зарегистрируется в `launchd` / `cron` / `Windows Task Scheduler` для методичной очистки ваших сообщений в полном фоне!
-
-* 💬 **Архив личной переписки (`export-pm`)**
-  Полное резервное копирование приватного диалога с любым пользователем: текст и **все медиафайлы** (фото, видео, кружки, голосовые, GIF-анимации, документы). Медиа автоматически сортируются по папкам, лимит 50 МБ на файл, инкрементальное обновление.
-
-* 🗑️ **Полная очистка данных пользователя (`delete`)**
-  Позволяет мгновенно и безвозвратно стереть все сведения о конкретной цели: удаляет сообщения из базы данных и все скачанные файлы/папки из локального хранилища. Предварительно запрашивает подтверждение для безопасности.
-
-* 📊 **Визуальный контроль (New!)**
-  Внедрена динамическая индикация прогресса для команд `export` и `update`. Вы в реальном времени видите текущего пользователя, чат, счетчик собранных сообщений и общий прогресс.
+* 📤 **Экспорт из БД (`db-export`)**
+  Возможность выгрузить накопленные в SQLite данные в человекочитаемые форматы (JSON/Text).
 
 ---
 
-### 💻 Установка (Windows / macOS / Linux)
+### 💻 Установка и быстрый старт
 
-Утилита написана на Python и является полностью кроссплатформенной (требуется версия **3.9 или выше**). 
+1. **Клонируйте репозиторий** и установите зависимости через `pip install .`
+2. **Алиасы**: Выполните `tg-msg-manager setup`, чтобы получить короткую команду `tg`.
+3. **Запуск**: Просто введите `tg` в терминале для входа в интерактивное меню.
 
-**Шаг 1. Откройте терминал**
-Перейдите в папку с проектом (туда, где лежит файл `pyproject.toml`).
-
-**Шаг 2. Создание виртуального окружения (рекомендуется)**
-* 🪟 **Windows (CMD/PowerShell):**
-  ```cmd
-  python -m venv .venv
-  .venv\Scripts\activate
-  ```
-* 🍎🐧 **macOS / Linux (Terminal):**
-  ```bash
-  python3 -m venv .venv
-  source .venv/bin/activate
-  ```
-
-**Шаг 3. Установка пакета**
-```bash
-pip install .
-```
-> 💡 **Примечание для Windows:** Если после установки команда `tg-msg-manager` не распознана, убедитесь, что путь к скриптам Python добавлен в переменную среды `PATH`, либо запускайте утилиту альтернативной командой `python -m tg_msg_manager.cli`
-
-**Шаг 4. Установка быстрых алиасов (опционально)**
-```bash
-tg-msg-manager setup
-```
-Эта команда автоматически пропишет в ваш терминал (`~/.zshrc`, `~/.bashrc` или создаст `.bat`-файлы на Windows) набор коротких команд с уже вшитыми правильными путями к Python и к вашему проекту. После этого вместо длинных команд вы сможете писать:
-
-| Алиас | Описание |
-|--------|----------|
-| `tg`   | 📖 Показать справку по всем алиасам |
-| `tgr`  | 🛡️ Репетиция удаления (dry-run) |
-| `tgd`  | 🧨 Боевое удаление сообщений |
-| `tge`  | 📥 Экспорт сообщений из групп (напр.: `tge 12345`) |
-| `tgu`  | 🔄 Обновить все экспорты |
-| `tgpm` | 💬 Архив личной переписки с медиа (напр.: `tgpm 12345`) |
-| `tgdel`| 🗑️ Полное удаление данных о пользователе (БД + файлы) |
-
----
-
-### ⚙️ Конфигурация (`config.local.json`)
-
-Скопируйте пример файла `config.example.json` и назовите его `config.local.json`. Положите его в ту же директорию, откуда планируете запускать скрипт.
-
-**Ключевые параметры для удаления (`clean`):**
-- `api_id` / `api_hash`: ваши ключи разработчика (можно получить на [my.telegram.org](https://my.telegram.org)).
-- `account_name`: (опционально) имя вашего аккаунта. Если указано, файлы сессии и базы данных будут называться `<имя>_session` и `<имя>_messages.db`.
-- `dry_run`: установите `true`, чтобы посмотреть статистику предстоящего удаления без риска. Установите `false` для реального удаления.
-- `min_date_days_ago`: ограничить удаление временными рамками (например, `30` — удалить только то, что отправлено за последние 30 дней).
-- `include_chats` / `exclude_chats` / `exclude_chat_titles`: настройка белых и черных списков.
-
----
-
-### 🚀 Быстрый старт
-
-Более подробное описание всех аргументов командной строки смотрите в отдельном справочнике: **[COMMANDS.md](COMMANDS.md)**.
-
-**Примеры:**
-```bash
-# Репетиция удаления (посмотрит сколько удалит, но ничего не тронет)
-tg-msg-manager clean --dry-run --yes
-
-# Экспорт всей истории сообщений с контекстом (Золотой Стандарт)
-tg-msg-manager export --user-id 1234567
-
-# Инкрементальное обновление ВСЕХ целей из базы с учетом их индивидуальных настроек
-tg-msg-manager update
-
-# Принудительный сброс истории и чистая перекачка (перезапишет старые файлы)
-tg-msg-manager update --force-resync --context-window 5
-```
+> 💡 **Навигация**: Используйте цифры **1-9** для выбора, **ESC** — назад/отмена, **0** — выход.
 
 ---
 ---
@@ -124,107 +49,38 @@ tg-msg-manager update --force-resync --context-window 5
 <a id="english"></a>
 ## 🇬🇧 English
 
-A `telethon`-based CLI utility for advanced Telegram message management. Forget about manual cleaning: this script allows you to safely bulk-delete your messages or perform lightning-fast history exports of targeted users.
+**TG_MSG_MNGR** is a high-performance ecosystem for managing your digital footprint on Telegram. Reimagined in Version 4.0, the utility has evolved from a simple script into a robust, "app-like" terminal experience focusing on UX, speed, and deterministic data integrity.
 
-### 🌟 Key Features
+### 💎 Version 4.0 Highlights (UX Revolution)
 
-* 🧹 **Message Deletion (`clean`)**
-  Deletes **your** messages from any group chats and channels you are currently a member of.
-  > Supports `dry-run` rehearsal mode, specific date filtering, message type filtering, and chat white/blacklists. Intelligently prevents and handles `FloodWait` errors.
+* 🎨 **Cyberpunk UI**: Vibrant 24-bit ANSI gradient banners and a premium, high-fidelity interface design.
+* ⚡ **Ultra-Responsive**: Single-key navigation (press a number to act immediately) and full **ESC** key support for instant cancellation or "back" navigation.
+* 🏗️ **Service-Oriented Core**: Completely refactored modular architecture (`ExportService`, `CleanerService`, `ArchiveService`) ensuring long-term stability and easier auditing.
+* 📖 **In-App Guidance**: Every sub-menu features technical descriptions of how the specific engine works.
+
+### 🌟 Core Features
+
+* 🧹 **Global Cleanup (`clean`)**
+  Removes **your own** messages from all currently joined group chats. Respects whitelists and handles FloorWait errors gracefully.
   
-* 📥 **Context-Aware Export (`export`)** — *Deep-First by default!*
-  The script now retrieves not just the target's messages but also the **surrounding conversation** (3 messages around each reply by default). Manual `--deep` flag is no longer required.
-  > Data is saved concurrently to a local file (Text/JSONL) and the SQLite database.
+* 📥 **Deep Context Export (`export`)**
+  Automatically retrieves target messages along with the "surrounding" conversation window, providing a complete picture of the dialogue.
 
-* 🔄 **Autonomous Mass Updater (`update`)**
-  Sync all your archives with a single command. The tool uses the SQLite database as the "Source of Truth," instantly finding new messages and **automatically applying the configuration** (depth, window size) saved during the initial export.
+* 🗄️ **SQLite Source of Truth**
+  All messages are stored in a structured `messages.db`. Ensures zero duplicates and instant querying across millions of records.
 
-* 🧬 **Gold Standard Analytics**
-  Includes pre-configured "balanced" settings: `context-window 3` and `max-cluster 10`. Provides a complete behavior profile with full context while keeping the database lean and optimized.
+* 💬 **Media Archive (`export-pm`)**
+  Total backup for private conversations: text and **all media types** (photos, videos, voice notes), auto-sorted into categorized folders.
 
-* ⏳ **Self-Destruct Daemon (`schedule`)**
-  Instantly metamorphosize the tool into a background orchestrator. It registers natively with `launchd` / `cron` / `Task Scheduler` to scrub your footprint automatically in complete stealth mode.
-
-* 💬 **Private Chat Archive (`export-pm`)**
-  Full backup of private conversations with any user: text and **all media files** (photos, videos, circles, voice messages, GIFs, documents). Media is auto-sorted into categorized folders, with a 50 MB per-file limit and incremental updates.
-
-* 🗑️ **User Data Disposal (`delete`)**
-  Instantly and permanently erases all records for a specific target: purges messages from the database and deletes all downloaded files/folders from local storage. Always asks for confirmation to prevent accidental loss.
-
-* 📊 **Dynamic Progress (New!)**
-  Real-time feedback for `export` and `update` commands. Monitor current target, chat title, collected messages, and overall progress in a single dynamic line.
+* 📤 **Database Export (`db-export`)**
+  Native service to export collected SQLite records into human-readable formats (JSON/TXT).
 
 ---
 
-### 💻 Installation (Windows / macOS / Linux)
+### 💻 Installation & Quick Start
 
-The utility is thoroughly cross-platform but requires **Python 3.9+**.
+1. **Clone & Install**: Run `pip install .` in the root directory.
+2. **Aliases**: Execute `tg-msg-manager setup` to register the `tg` shortcut.
+3. **Launch**: Simply type `tg` in your terminal to enter the premium interactive menu.
 
-**Step 1. Open your terminal**
-Navigate to the root directory (where `pyproject.toml` is located).
-
-**Step 2. Create a virtual environment (Recommended)**
-* 🪟 **Windows (CMD/PowerShell):**
-  ```cmd
-  python -m venv .venv
-  .venv\Scripts\activate
-  ```
-* 🍎🐧 **macOS / Linux (Terminal):**
-  ```bash
-  python3 -m venv .venv
-  source .venv/bin/activate
-  ```
-
-**Step 3. Install the package**
-```bash
-pip install .
-```
-> 💡 **Note for Windows users:** If the `tg-msg-manager` command is not recognized post-installation, ensure your Python scripts folder is added to your environment `PATH` variable, or run the tool via `python -m tg_msg_manager.cli`.
-
-**Step 4. Install quick aliases (Optional)**
-```bash
-tg-msg-manager setup
-```
-This command automatically configures short terminal aliases in your shell (`~/.zshrc`, `~/.bashrc`, or creates `.bat` files on Windows) with the correct paths to Python and your project directory already baked in. After this, instead of lengthy commands you can simply type:
-
-| Alias  | Description |
-|--------|-------------|
-| `tg`   | 📖 Show the aliases cheatsheet |
-| `tgr`  | 🛡️ Dry-run deletion rehearsal |
-| `tgd`  | 🧨 Real message deletion |
-| `tge`  | 📥 Export messages from groups (e.g. `tge 12345`) |
-| `tgu`  | 🔄 Update all exports |
-| `tgpm` | 💬 Archive a private chat with media (e.g. `tgpm 12345`) |
-| `tgdel`| 🗑️ Full disposal of user data (DB + Files) |
-
----
-
-### ⚙️ Configuration (`config.local.json`)
-
-Copy `config.example.json` and optionally rename it to `config.local.json` in your execution directory.
-
-**Crucial parameters for deleting (`clean`):**
-- `api_id` / `api_hash`: get these from [my.telegram.org](https://my.telegram.org).
-- `dry_run`: set `true` to test the script without actual deletion. Set `false` for real deletions.
-- `min_date_days_ago`: limit to the past X days (e.g., `30`).
-- `include_chats` / `exclude_chats`: tweak chat allowances.
-
----
-
-### 🚀 Quick Start
-
-For an exhaustive and comprehensive guide on commands and flags, please refer to **[COMMANDS.md](COMMANDS.md)**.
-
-**Examples:**
-```bash
-# Dry-run deletion (checks what would be removed without touching anything)
-tg-msg-manager clean --dry-run --yes
-
-# Export history with full context (Gold Standard is now default!)
-tg-msg-manager export --user-id 1234567
-
-# Fast incremental update of all locally exported users using DB settings
-tg-msg-manager update
-```
-
----
+> 💡 **Navigation Tip**: Use numbers **1-9** to select, **ESC** to go back/cancel, and **0** to exit.

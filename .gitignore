@@ -1,5 +1,7 @@
 # Личные данные и сессии Telethon
-*.session*
+*.session
+*.session-shm
+*.session-wal
 *.session-journal
 
 # Локальный конфиг и логи (не коммитить)
@@ -7,7 +9,9 @@ config.json
 config.local.json
 delete_log.txt
 *.log
-messages.db*
+messages.db
+messages.db-shm
+messages.db-wal
 LOGS/
 TASKS/
 .tg_msg_manager.lock

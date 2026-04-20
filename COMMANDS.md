@@ -1,248 +1,99 @@
 # 📖 Commands Guide / Руководство по командам
 
-Утилита запускается командой `tg-msg-manager` и поддерживает три мощных режима работы.
-The utility is executed via `tg-msg-manager` supporting three powerful subcommands.
-
 [🇷🇺 Русская версия](#русский) | [🇬🇧 English Version](#english)
 
 ---
+
 <a id="русский"></a>
-## 🇷🇺 Русский: Подробное руководство
+## 🇷🇺 Русский: Интерактивный режим и CLI
 
-### 🧹 1. Режим очистки (`clean`) — *По умолчанию*
-Удаляет ваши сообщения из доступных групп и каналов. Тонкая настройка (исключения, даты) производится в файле конфигурации.
+Начиная с версии 4.0, основным способом взаимодействия является **Интерактивное меню**. 
 
-**Флаги и Аргументы:**
-* `--dry-run` (или `--dry-run-flag`) — 🛡️ **Безопасный режим.** Скрипт просканирует чаты и покажет точное количество сообщений, но ничего **не удалит**.
-* `--apply` — 🧨 **Боевой режим.** Принудительное реальное удаление сообщений (игнорирует параметр `dry_run` в конфиге).
-* `--yes` — 🤖 Пропуск подтверждения. Идеально для автоматизации скриптов (cron), чтобы утилита не просила нажать `[y/N]`.
+### 🖥️ 1. Интерактивное меню (Основной режим)
+Запускается командой `tg` (если установлены алиасы) или `tg-msg-manager` без аргументов.
 
-**Примеры использования:**
-```bash
-tg-msg-manager clean --dry-run
-tg-msg-manager clean --apply --yes
+**Особенности управления:**
+*   **Выбор**: Просто нажмите цифру (напр. `1`), нажимать Enter не нужно.
+*   **Отмена/Назад**: Нажмите клавишу **ESC** в любой момент.
+*   **Выход**: Нажмите `0` в главном меню.
 
-# Альтернативный запуск напрямую (python -m):
-python -m tg_msg_manager.cli clean --dry-run
-```
-
-### 📥 2. Режим экспорта (`export`)
-Ищет сообщения заданного пользователя и выгружает их. По умолчанию включен **Deep Search Mode** (глубокий контекст). Все данные сохраняются в `messages.db`.
-
-**Флаги и Аргументы:**
-* `--user-id` *(Обязательный)* — ID или username целевого пользователя.
-* `--chat-id` — ID конкретного чата для ускорения поиска (необязательно).
-* `--flat` — ⚡️ **Плоский экспорт.** Отключить контекст (только сообщения автора). Удобно для экономии места.
-* `--force-resync` — 🧨 **Сброс истории.** Начать загрузку с самого начала, игнорируя текущий прогресс в БД.
-* `--context-window` — Размер окна контекста (Золотой Стандарт: **3**).
-* `--max-cluster` — Лимит сообщений в одном фрагменте контекста (дефолт: **10**).
-* `--json` — После завершения синхронизации автоматически создать файл экспорта в формате **JSONL**.
-
-**Примеры использования:**
-```bash
-# Стандартный экспорт из конкретного чата
-python -m tg_msg_manager.cli export --user-id 1234567 --chat-id -100123456789
-
-# Глубокий аудит: перекачать историю заново с окном 5
-python -m tg_msg_manager.cli export --user-id "spammer" --force-resync --context-window 5
-```
-
-### 🔄 3. Режим обновления (`update`) — *Smart Sync*
-Теперь это полностью автономная команда. Она больше не сканирует файлы, а берет список целей и их настройки прямо из базы данных.
-
-**Особенности:**
-* **Persistent Config**: Если вы один раз выгрузили пользователя с окном 5, `update` всегда будет использовать 5 для него.
-* **Force Update**: `update --force-resync` заставит скрипт перепроверить всю историю по всем отслеживаемым пользователям и перезаписать файлы.
-* **Overrides**: Любой флаг (например, `--context-window`) переопределит настройки в базе для этого и всех последующих запусков.
-* **Dynamic Status**: В процессе работы отображается динамическая строка состояния: `🔄 Обновление: [Имя] | [Чат] | 📥 Собрано: [Всего] | [x/N] целей`.
-
-**Примеры использования:**
-```bash
-# Просто обновить всё по графику
-tg-msg-manager update
-
-# Массово перевести всех на плоский экспорт и обновить
-tg-msg-manager update --flat
-```
-
-**Пример использования:**
-```bash
-tg-msg-manager update
-```
-
-### 💬 4. Экспорт личной переписки (`export-pm`)
-Полный архив приватного диалога: текст + **все медиафайлы** (фото, видео, кружки, голосовые, GIF, документы). Медиа автоматически раскладываются по категориям в отдельные папки внутри `PRIVAT_DIALOGS/Имя_@юзернейм_ID/media/`.
-
-> ⚙️ **Встроенные защиты:** Инкрементальное обновление (докачивает только новое), лимит 50 МБ на файл, умный балансировщик загрузок (эмуляция обычного пользователя).
-
-**Флаги и Аргументы:**
-* `--user-id` *(Обязательный)* — ID или username пользователя, чей приватный диалог нужно архивировать.
-
-**Примеры использования:**
-```bash
-tg-msg-manager export-pm --user-id 5378570247
-tg-msg-manager export-pm --user-id "johndoe"
-```
-
-**Структура выгрузки:**
-```
-PRIVAT_DIALOGS/
-└── John Doe_@johndoe_+79991234567_5378570247/
-    ├── chat_log.txt
-    └── media/
-        ├── photos/
-        ├── videos/
-        ├── video_notes/
-        ├── voices/
-        ├── gifs/
-        └── documents/
-```
-
-### ⏳ 5. Режим авто-очистки (`schedule`)
-Новейший механизм "таймера самоуничтожения". Единожды задав вопросы через консоль (выбор режима: **интервал** или **точное время**, исключения), утилита сама зарегистрирует себя системным фоновым демоном (через `launchd` на macOS, `cron` на Linux или Планировщик задач на Windows). Ваши сообщения будут стабильно удаляться полностью в фоновом режиме по расписанию!
-
-**Пример использования:**
-```bash
-tg-msg-manager schedule
-```
-
-### 🗑️ 6. Режим удаления данных (`delete`)
-Полностью стирает локальную историю и настройки для конкретного пользователя.
-> ⚠️ **Внимание**: Это действие удалит все сообщения из `messages.db` и все файлы в `PUBLIC_GROUPS`/`PRIVAT_DIALOGS` по ID цели.
-
-**Флаги и Аргументы:**
-* `--user-id` *(Обязательный)* — ID пользователя для удаления.
-* `--yes` — Пропуск подтверждения.
-
-**Примеры использования:**
-```bash
-tg-msg-manager delete --user-id 1234567
-tg-msg-manager delete --user-id 999 --yes
-```
-
-### 🌍 7. Глобальные Флаги
-**`--config-dir`** — Задает путь к папке с вашим конфигурационным файлом. 
-```bash
-tg-msg-manager --config-dir /etc/tg_cleaner export --user-id 12345
-```
+**Разделы меню:**
+1.  **Экспорт**: Синхронизация истории с контекстом.
+2.  **Обновление**: Инкрементальная докачка всех активных целей.
+3.  **Очистка**: Удаление своих сообщений из групп.
+4.  **Личка + Медиа**: Полный бэкап приватного чата (текст + файлы).
+5.  **Удалить данные**: Полная очистка локальной БД по конкретному ID.
+6.  **О программе**: Техническая информация.
+7.  **Экспорт из БД**: Выгрузка из SQLite в JSON/Text.
 
 ---
+
+### ⌨️ 2. CLI Команды (Для автоматизации)
+Для использования в скриптах или планировщике доступны прямые команды.
+
+#### `export` — Сбор истории
+```bash
+tg-msg-manager export --user-id <ID> [--chat-id <ID>] [--flat]
+```
+*   `--flat`: Только сообщения автора, без контекста.
+*   `--force-resync`: Начать заново, игнорируя прогресс в БД.
+
+#### `update` — Массовое обновление
+```bash
+tg-msg-manager update [--force-resync]
+```
+Обновляет все цели, используя настройки (depth, window), сохраненные в базе данных.
+
+#### `db-export` — Выгрузка из базы (New!)
+```bash
+tg-msg-manager db-export --user-id <ID> [--json]
+```
+Экспортирует сохраненные сообщения в файл.
+
+---
+
 <a id="english"></a>
-## 🇬🇧 English: Extensive Guide
+## 🇬🇧 English: Interactive Mode & CLI
 
-### 🧹 1. Clean Mode (`clean`) — *Default*
-Deletes your messages from accessible groups and channels. Fine-tuning filters and blacklists are handled via your config file.
+Since Version 4.0, the **Interactive Menu** is the recommended way to operate.
 
-**Flags & Arguments:**
-* `--dry-run` — 🛡️ **Safe rehearsal.** Audits your chats and prints stats on what would be removed, but performs **no actual deletion**.
-* `--apply` — 🧨 **Combat mode.** Real deletion. Forcefully overrides the `dry_run` configuration.
-* `--yes` — 🤖 Bypasses the initial `[y/N]` confirmation prompts. Highly useful for headless cron jobs.
+### 🖥️ 1. Interactive Menu (Primary Mode)
+Launch via the `tg` shortcut or run `tg-msg-manager` without arguments.
 
-**Examples:**
+**Navigation:**
+*   **Selection**: Press any numeric key (e.g., `1`) for instant activation. No Enter key is needed.
+*   **Cancel/Back**: Press the **ESC** key at any point to return to the previous screen.
+*   **Exit**: Press `0` from the main menu.
+
+**Menu Map:**
+1.  **Export History**: Sync message history with conversation context.
+2.  **Universal Update**: Incremental sync for all tracked targets.
+3.  **Global Cleanup**: Bulk removal of your messages from groups.
+4.  **PM Media Archive**: Total backup of direct messages with photos/files.
+5.  **Purge Data**: Irreversible removal of a target's history from local storage.
+6.  **About**: System information and versions.
+7.  **DB Export Service**: Convert SQLite records to JSON/Text.
+
+---
+
+### ⌨️ 2. CLI Subcommands (For Automation)
+Direct commands are available for scripting, Cron, or advanced usage.
+
+#### `export` — History Synchronization
 ```bash
-python -m tg_msg_manager.cli clean --dry-run
-python -m tg_msg_manager.cli clean --apply --yes
-
-# Run directly via python module:
-python -m tg_msg_manager.cli clean --dry-run
+tg-msg-manager export --user-id <ID> [--chat-id <ID>] [--flat]
 ```
+*   `--flat`: Fetch only author messages, skipping surrounding context.
+*   `--force-resync`: Restart the sync from the beginning.
 
-### 📥 2. Export Mode (`export`)
-Locates target users and extracts their messages. **Deep Search Mode** (window 3) is enabled by default. All data is synchronized into `messages.db`.
-
-**Flags & Arguments:**
-* `--user-id` *(Required)* — Numeric ID or username.
-* `--chat-id` — Specific Chat ID to speed up search (optional).
-* `--flat` — ⚡️ **Flat Export.** Disable context (author messages only). Saves space and time.
-* `--force-resync` — 🧨 **Re-scan History.** Ignores current progress in DB and re-downloads the entire history.
-* `--context-window` — Context size (Gold Standard: **3**).
-* `--max-cluster` — Message limit per context fragment (default: **10**).
-* `--json` — Automatically trigger a **JSONL** file export after sync.
-
-**Examples:**
-```bash
-# Standard export from a specific chat
-python -m tg_msg_manager.cli export --user-id 1234567 --chat-id -100123456789
-
-# Deep audit: re-fetch history with window 5
-python -m tg_msg_manager.cli export --user-id "spammer" --force-resync --context-window 5
-```
-
-### 🔄 3. Update Mode (`update`) — *Smart Sync*
-A fully autonomous command. It retrieves targets and their individual configurations directly from the SQLite database.
-
-**Key Features:**
-* **Persistent Config**: Once an export is performed with a specific depth, `update` will remember and reuse those settings forever.
-* **Force Update**: `update --force-resync` triggers a full historical re-audit for all registered targets and overwrites existing files.
-* **Overrides**: Passing any flag (e.g., `--context-window`) will override the stored database setting for this and future runs.
-* **Dynamic Progress**: Displays a real-time status line: `🔄 Updating: [Name] | [Chat] | 📥 Collected: [Total] | [x/N] targets`.
-
-**Examples:**
-```bash
-# Standard scheduled sync
-tg-msg-manager update
-
-# Bulk switch to flat exports
-tg-msg-manager update --flat
-```
-
-**Examples:**
+#### `update` — Batch Updater
 ```bash
 tg-msg-manager update
 ```
+The "Smart Sync" engine. It automatically finds all targets in the DB and brings them up to date.
 
-### 💬 4. Private Chat Archive (`export-pm`)
-A complete backup of a private (direct message) conversation: text + **all media files** (photos, videos, video notes / circles, voice messages, GIFs, documents). Media is automatically sorted into dedicated subfolders inside `PRIVAT_DIALOGS/Name_@username_ID/media/`.
-
-> ⚙️ **Built-in safeguards:** Incremental updates (only fetches new data), 50 MB per-file size limit, smart download throttler (emulates normal user behavior).
-
-**Flags & Arguments:**
-* `--user-id` *(Required)* — The numeric ID or username of the user whose DM thread to archive.
-
-**Examples:**
+#### `db-export` — Local Data Retrieval
 ```bash
-tg-msg-manager export-pm --user-id 5378570247
-tg-msg-manager export-pm --user-id "johndoe"
+tg-msg-manager db-export --user-id <ID> [--json]
 ```
-
-**Output structure:**
-```
-PRIVAT_DIALOGS/
-└── John Doe_@johndoe_+79991234567_5378570247/
-    ├── chat_log.txt
-    └── media/
-        ├── photos/
-        ├── videos/
-        ├── video_notes/
-        ├── voices/
-        ├── gifs/
-        └── documents/
-```
-
-### ⏳ 5. Auto-Clean Daemon (`schedule`)
-The state-of-the-art "self-destruct timer" setup. By asking a few simple questions in the console (time intervals, exclusion tracking), the utility instantly wraps itself around a native OS background daemon (`launchd` on macOS, `cron` on Linux, Task Scheduler on Windows). Your messages will be relentlessly and seamlessly scrubbed from the internet autonomously in the background!
-
-**Examples:**
-```bash
-tg-msg-manager schedule
-```
-
-### 🗑️ 6. Data Disposal Mode (`delete`)
-Purges all local history and settings for a specific target.
-> ⚠️ **Warning**: This action erases all messages from `messages.db` and any files/folders in `PUBLIC_GROUPS`/`PRIVAT_DIALOGS` belonging to this ID.
-
-**Flags & Arguments:**
-* `--user-id` *(Required)* — Target ID to purge.
-* `--yes` — Bypasses the confirmation prompt.
-
-**Examples:**
-```bash
-tg-msg-manager delete --user-id 1234567
-tg-msg-manager delete --user-id 999 --yes
-```
-
-### 🌍 7. Global Flags
-**`--config-dir`** — Instructs the tool to fetch its configuration from a specific directory path.
-```bash
-tg-msg-manager --config-dir /etc/tg_cleaner clean --apply --yes
-```
+Converts the internal SQLite representation into human-readable files.
