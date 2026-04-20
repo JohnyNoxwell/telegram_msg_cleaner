@@ -1,4 +1,3 @@
-from .core import Settings, delete_my_messages, load_settings
+from .core.config import Settings, load_settings, settings
 
-__all__ = ["Settings", "delete_my_messages", "load_settings"]
-
+__all__ = ["Settings", "load_settings", "settings"]

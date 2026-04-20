@@ -27,23 +27,24 @@ python -m tg_msg_manager.cli clean --dry-run
 ```
 
 ### 📥 2. Режим экспорта (`export`)
-Ищет все сообщения заданного пользователя и выкачивает их. По умолчанию включен **Deep Search Mode** (глубокий контекст). Сообщения сохраняются в `messages.db` и файл в папке `PUBLIC_GROUPS`.
+Ищет сообщения заданного пользователя и выгружает их. По умолчанию включен **Deep Search Mode** (глубокий контекст). Все данные сохраняются в `messages.db`.
 
 **Флаги и Аргументы:**
 * `--user-id` *(Обязательный)* — ID или username целевого пользователя.
-* `--flat` — ⚡️ **Плоский экспорт.** Отключить контекст (только сообщения автора). Удобно для быстрой выгрузки без лишних данных.
-* `--force-resync` — 🧨 **Сброс истории.** Игнорировать сохраненный прогресс и перекачать всю историю реплик заново. **Внимание:** существующие файлы экспорта для этого пользователя будут перезаписаны с нуля.
+* `--chat-id` — ID конкретного чата для ускорения поиска (необязательно).
+* `--flat` — ⚡️ **Плоский экспорт.** Отключить контекст (только сообщения автора). Удобно для экономии места.
+* `--force-resync` — 🧨 **Сброс истории.** Начать загрузку с самого начала, игнорируя текущий прогресс в БД.
 * `--context-window` — Размер окна контекста (Золотой Стандарт: **3**).
-* `--max-cluster` — Макс. сообщений в одном кластере контекста (дефолт: **10**).
-* `--json` — Экспорт в формате **JSONL**.
+* `--max-cluster` — Лимит сообщений в одном фрагменте контекста (дефолт: **10**).
+* `--json` — После завершения синхронизации автоматически создать файл экспорта в формате **JSONL**.
 
 **Примеры использования:**
 ```bash
-# Стандартный экспорт с контекстом (window 3)
-tg-msg-manager export --user-id 1234567
+# Стандартный экспорт из конкретного чата
+python -m tg_msg_manager.cli export --user-id 1234567 --chat-id -100123456789
 
 # Глубокий аудит: перекачать историю заново с окном 5
-tg-msg-manager export --user-id "spammer" --force-resync --context-window 5
+python -m tg_msg_manager.cli export --user-id "spammer" --force-resync --context-window 5
 ```
 
 ### 🔄 3. Режим обновления (`update`) — *Smart Sync*
@@ -139,31 +140,32 @@ Deletes your messages from accessible groups and channels. Fine-tuning filters a
 
 **Examples:**
 ```bash
-tg-msg-manager clean --dry-run
-tg-msg-manager clean --apply --yes
+python -m tg_msg_manager.cli clean --dry-run
+python -m tg_msg_manager.cli clean --apply --yes
 
 # Run directly via python module:
 python -m tg_msg_manager.cli clean --dry-run
 ```
 
 ### 📥 2. Export Mode (`export`)
-Locates target users and extracts their messages. **Deep Search Mode** (window 3) is enabled by default. All data is synchronized between `messages.db` and local files.
+Locates target users and extracts their messages. **Deep Search Mode** (window 3) is enabled by default. All data is synchronized into `messages.db`.
 
 **Flags & Arguments:**
 * `--user-id` *(Required)* — Numeric ID or username.
+* `--chat-id` — Specific Chat ID to speed up search (optional).
 * `--flat` — ⚡️ **Flat Export.** Disable context (author messages only). Saves space and time.
-* `--force-resync` — 🧨 **Re-scan History.** Ignores current progress and re-downloads the entire history. **Note:** existing export files for this user will be overwritten from scratch.
+* `--force-resync` — 🧨 **Re-scan History.** Ignores current progress in DB and re-downloads the entire history.
 * `--context-window` — Context size (Gold Standard: **3**).
 * `--max-cluster` — Message limit per context fragment (default: **10**).
-* `--json` — Export in **JSONL** format.
+* `--json` — Automatically trigger a **JSONL** file export after sync.
 
 **Examples:**
 ```bash
-# Standard export with context (window 3)
-tg-msg-manager export --user-id 1234567
+# Standard export from a specific chat
+python -m tg_msg_manager.cli export --user-id 1234567 --chat-id -100123456789
 
 # Deep audit: re-fetch history with window 5
-tg-msg-manager export --user-id "spammer" --force-resync --context-window 5
+python -m tg_msg_manager.cli export --user-id "spammer" --force-resync --context-window 5
 ```
 
 ### 🔄 3. Update Mode (`update`) — *Smart Sync*

@@ -1,0 +1,438 @@
+import os
+
+# Текущий выбранный язык (по умолчанию русский)
+_CURRENT_LANG = "ru"
+
+def set_lang(lang_code: str):
+    global _CURRENT_LANG
+    if lang_code in STRINGS:
+        _CURRENT_LANG = lang_code
+
+def get_lang() -> str:
+    return _CURRENT_LANG
+
+def _t(key: str, **kwargs) -> str:
+    """Возвращает переведенную строку по ключу."""
+    lang_dict = STRINGS.get(_CURRENT_LANG, STRINGS["ru"])
+    # Если ключа нет в текущем языке, пробуем русский как фолбэк
+    text = lang_dict.get(key, STRINGS["ru"].get(key, key))
+    if kwargs:
+        return text.format(**kwargs)
+    return text
+
+STRINGS = {
+    "ru": {
+        # Главное меню
+        "menu_title": "ГЛАВНОЕ МЕНЮ",
+        "menu_1": "Экспорт",
+        "menu_1_desc": "Выкачать историю сообщений пользователя из указанных по ID чатов (включая контекст)",
+        "menu_2": "Обновление",
+        "menu_2_desc": "Синхронизировать все активные цели",
+        "menu_3": "Глобальная очистка",
+        "menu_3_desc": "Удалить ВАШИ сообщения из ВСЕХ групп (кроме исключений)",
+        "menu_4": "Личка + Медиа",
+        "menu_4_desc": "Полный архив приватного чата",
+        "menu_5": "Удалить данные",
+        "menu_5_desc": "Полное удаление скачанных данных пользователя по ID",
+        "menu_6": "Расписание",
+        "menu_6_desc": "Настройка фоновых задач (launchd/cron)",
+        "menu_7": "Настройка",
+        "menu_7_desc": "Установка быстрых алиасов в терминал",
+        "menu_8": "О программе",
+        "menu_8_desc": "Помощь и описание функций",
+        "menu_9": "Экспорт из БД",
+        "menu_9_desc": "Создать файлы (.txt/.json) на основе базы данных",
+        "menu_lang": "Язык / Language",
+        "menu_exit": "Выход",
+        "choice_prompt": "Выберите пункт меню",
+        "prompt_target": "Введите ID или username цели (0 - Назад)",
+        "prompt_chat": "ID конкретного чата (опционально, Enter для всех)",
+        "prompt_deep": "Включить DEEP MODE (контекст)? [y/N]",
+        "prompt_clean_target": "Введите ID или username для очистки (или 'all')",
+        "prompt_dry_run": "Режим Dry Run (безопасно)? [Y/n]",
+        "prompt_pm_target": "Введите ID цели для архива лички (0 - Назад)",
+        "prompt_purge_id": "Введите ID пользователя для ПОЛНОГО удаления (0 - Назад)",
+        "about_text": "TG.MSG.CLEANER v3.0 — Мощный инструмент для управления историей сообщений Telegram.\nПоддерживает инкрементальный экспорт, глубокий поиск контекста и безопасную очистку.",
+        "goodbye": "До свидания!",
+        "error_locked": "Ошибка: Процесс уже запущен (файл блокировки активен).",
+        
+        # Общие элементы
+        "back": "Назад",
+        "cancel": "Отмена",
+        "confirm": "Подтверждаете?",
+        "success": "Успешно!",
+        "error": "Ошибка",
+        "loading": "Загрузка...",
+        "press_enter": "Нажмите Enter для продолжения...",
+        "action_complete": "Действие завершено.",
+        
+        # Промпты
+        "enter_id": "Введите ID или username",
+        "search_depth": "Глубина поиска (окно)",
+        "depth_label": "Глубина",
+        "mode_select": "Выберите режим",
+        "invalid_choice": "Некорректный выбор. Пожалуйста, выберите пункт от {start} до {end}.",
+        
+        # Подменю Экспорт
+        "sub_export_title": "Экспорт пользователя",
+        "sub_export_info": "Выкачка истории из чатов, где вы состоите и хотя бы раз пересекались с целью.",
+        "export_start": "Запуск экспорта для {uid} (окно: {window})...",
+        
+        # Подменю Обновление
+        "sub_update_title": "Обновление архивов",
+        "sub_update_info": "Синхронизация новых сообщений для всех ранее выгруженных целей.",
+        "update_run": "Запустить синхронизацию",
+        "update_starting": "Запуск массового обновления...",
+        
+        # Подменю Очистка
+        "sub_clean_confirm": "ВНИМАНИЕ: Это запустит очистку ВАШИХ сообщений из ВСЕХ групп и супергрупп.",
+        "sub_clean_info": "Личные диалоги не будут тронуты. Будут учтены исключения из config.json.",
+        "clean_dry": "Репетиция (dry-run)",
+        "clean_real": "Боевое удаление",
+        "clean_confirm": "Уверены? Сообщения будут удалены.",
+        
+        # Подменю Удаление данных
+        "sub_delete_title": "Полное удаление данных",
+        "sub_delete_info": "Безвозвратное удаление всех локальных данных (БД + файлы) по ID пользователя.",
+        "no_targets": "В базе данных пока нет отслеживаемых пользователей.",
+        "select_user_to_delete": "Выберите пользователя для полного удаления данных",
+        "delete_warning": "ВНИМАНИЕ: Будут удалены ВСЕ сообщения и файлы для '{name}'.",
+        
+        # Подменю Расписание
+        "sub_sched_title": "Планировщик задач",
+        "sub_sched_info": "Настройка системы для автоматической очистки сообщений в фоновом режиме.",
+        "sched_setup": "Настроить расписание",
+        
+        # Подменю Настройка
+        "sub_setup_title": "Настройка системы",
+        "sub_setup_info": "Установка быстрых алиасов (tg, tge, tgu) для удобного запуска из терминала.",
+        "setup_aliases": "Установить алиасы (tg, tge, tgu...)",
+        "setup_api": "Настроить Telegram API (ID/Hash)",
+        
+        # Подменю Экспорт из БД
+        "sub_db_export_title": "Экспорт из базы данных",
+        "sub_db_export_info": "Создать новые файлы (.txt/.json) на основе истории из SQLite.",
+        "select_user_export": "Выберите пользователя для выгрузки",
+        "user_selected": "Выбран: {name}",
+        "select_format": "Выберите формат",
+        "fmt_json": "JSONL (продвинутый, с метаданными)",
+        "fmt_txt": "Plain Text (красивый, для чтения)",
+        "db_export_start": "Запуск экспорта из БД для {name} ({count} сообщений)...",
+        "db_export_complete": "Экспорт завершен! Обработано {count} сообщений.",
+        "db_export_saved": "Файлы сохранены в папку {dir}",
+        "file_removed": "  [x] Удален старый файл экспорта: {file}",
+        "file_remove_error": "  [!] Ошибка удаления {file}: {err}",
+        "file_rotated": "Файл заполнен ({max} сообщений). Переход к части {part}: {file}",
+        "process_batch": "  🚀 Обработка {name}: [{n}/{total}] целей...",
+        "process_done": "  ✅ Готово: {name}",
+        "export_finished_simple": "Экспорт завершен!",
+        "error_user_update": "Ошибка при обновлении пользователя {uid}: {error}",
+        "update_complete": "Обновление завершено. Всего новых сообщений: {total}",
+        
+        # PM Exporter
+        "cat_photos": "фото",
+        "cat_videos": "видео",
+        "cat_video_notes": "видеосообщение (кружок)",
+        "cat_voices": "голосовое сообщение",
+        "cat_gifs": "GIF-анимация",
+        "cat_documents": "документ",
+        "cat_media": "медиа",
+        "empty_msg": "(пустое сообщение)",
+        "error_group_id": "⚠️  Указанный ID принадлежит группе, а не пользователю. Для групп используйте команду export.",
+        "error_find_user": "⚠️  Ошибка при поиске пользователя: {err}",
+        "error_folder_not_found": "⚠️  Папка экспорта не найдена — сброс прогресса, качаем заново.",
+        "incremental_mode": "🔄 Инкрементальный режим: докачиваем сообщения новее ID {id}",
+        "scanning_pm": "⏳ Сканирование приватного диалога...",
+        "stats_messages": "📝 Сообщений в логе: {count}",
+        "stats_media": "📥 Медиафайлов загружено: {count}",
+        "stats_duplicates": "♻️  Дубликатов пропущено: {count}",
+        "stats_skipped": "⏭️  Пропущено (превышение {max}): {count}",
+        "pm_export_complete": "✅ Экспорт приватного диалога завершён!",
+        "pm_folder": "📂 Результат: {dir}",
+        
+        # Setup
+        "setup_title": "=== Установка быстрых алиасов tg-msg-manager ===\n",
+        "setup_work_dir": "📂 Рабочая директория: {dir}",
+        "setup_python": "🐍 Python: {exe}\n",
+        "setup_success_unix": "✅ Алиасы успешно добавлены в: {path}",
+        "setup_activate": "   Для активации выполните: source {path}",
+        "setup_new_term": "   Или просто откройте новый терминал.",
+        "setup_success_win": "✅ Ярлыки (.bat) созданы в папке: {dir}",
+        "setup_win_path": "   Добавьте эту папку в системную переменную PATH,",
+        "setup_win_path_2": "   чтобы использовать команды tgr, tgd, tge, tgu, tgpm из любого места.",
+        "setup_platform_error": "⚠️  Платформа {plt} не поддерживается для автоустановки алиасов.",
+        "alias_header": "Доступные команды:",
+        "alias_tgr": "🛡️  Репетиция удаления (dry-run)",
+        "alias_tgd": "🧨  Боевое удаление сообщений",
+        "alias_tge": "📥  Экспорт сообщений из групп (+ user ID)",
+        "alias_tgu": "🔄  Обновить все экспорты",
+        "alias_tgpm": "💬  Архив личной переписки с медиа (+ user ID)",
+        "alias_tg": "📖  Показать эту справку",
+        
+        # Scheduler
+        "sched_exclusions_title": "\n=== Настройка исключений ===",
+        "sched_exclusions_info": "Вызовы авто-очистки могут обходить важные чаты (Blacklist).",
+        "sched_exclusions_prompt": "Хотите дополнить список исключаемых ID чатов (через запятую)? Оставьте пустым, чтобы не менять: ",
+        "sched_config_updated": "Конфиг обновлен! В 'exclude_chats' добавлено {count} новых ID.",
+        "sched_setup_title": "=== Установка авто-удаления сообщений (Auto-Clean) ===\n",
+        "sched_mode_prompt": "Выберите режим расписания:",
+        "sched_mode_1": " 1. С интервалом (например, каждые 12 часов)",
+        "sched_mode_2": " 2. В конкретное время (например, каждый день в 05:00)",
+        "sched_time_prompt": "Введите время в формате ЧЧ:ММ (24-часовой формат, по умолчанию 05:00): ",
+        "sched_interval_prompt": "Введите интервал запуска в часах (по умолчанию 12): ",
+        "sched_registering": "\nРегистрация демона на платформе: {plt}",
+        "sched_success_macos": "✅ Демон успешно зарегистрирован ({mode}) и запущен на macOS!",
+        "sched_success_linux": "✅ Задача успешно добавлена в crontab Linux ({mode})!",
+        "sched_success_win": "✅ Задача успешно добавлена в Планировщик Windows ({mode})!",
+        "sched_daily_at": "ежедневно в {time}",
+        "sched_every_x_hours": "каждые {hours} ч.",
+        "sched_complete": "\nНастройка завершена!",
+        
+        # Core
+        "db_locked_waiting": "⚠️ База данных сессии заблокирована другим процессом. Ожидание {delay} сек... (Попытка {i}/{max})",
+        "db_locked_error": "❌ Ошибка: База данных сессии остается заблокированной слишком долго.",
+        "db_locked_check": "Проверьте, не запущены ли другие копии tg_msg_manager (например, 'update' или 'clean' в фоне).",
+        "clean_summary": "🧹 Резюме по очистке {name}:",
+        "clean_found": "   🔍 Найдено сообщений: {count}",
+        "clean_deleted": "   🧨 Удалено: {count}",
+        "clean_dry_summary": "   🛡️ (Dry-run: сообщения не были удалены)",
+        "chat_header": "\nЧат #{n}: {title} (id={id})",
+        "found_candidates": "Найдено подходящих сообщений: {count}",
+        "dry_run_no_deletion": "DRY-RUN: удаление не выполняется.",
+        "deleted_in_chat": "Удалено сообщений в чате '{title}': {count}",
+        "summary_header": "\n=== Итог ===",
+        "dialogs_processed": "Диалогов обработано: {total}, групп/каналов: {eligible}",
+        "total_candidates_found": "Всего подходящих сообщений: {count}",
+        "dry_run_info": "Это был DRY-RUN, ничего не удалено. Измени 'dry_run' в config.json на false для реального удаления.",
+        "total_deleted_msgs": "Всего удалено сообщений: {count}",
+        "settings_loaded": "Настройки загружены:",
+        "continue_with_settings": "Продолжить с этими настройками? [y/N]: ",
+        
+        # Настройка API
+        "api_setup_title": "Настройка Telegram API",
+        "api_help_1": "Для работы скрипта требуются API ID и API Hash.",
+        "api_help_site": "Перейдите на сайт: https://my.telegram.org",
+        "api_help_steps": "Введите номер телефона -> API development tools -> Создайте приложение -> Скопируйте API ID и API Hash.",
+        "api_save_success": "Настройки API успешно сохранены в config.local.json!",
+        
+        # Прочее из exporter/pm
+        "msg_processed": "Обработано: {count}/{total}...",
+        "pm_export_start": "Запуск выгрузки приватного чата {uid}...",
+    },
+    "en": {
+        # Main Menu
+        "menu_title": "MAIN MENU",
+        "menu_1": "Export",
+        "menu_1_desc": "Download user message history from specified chats by ID (including context)",
+        "menu_2": "Update",
+        "menu_2_desc": "Synchronize all active targets",
+        "menu_3": "Global Clean",
+        "menu_3_desc": "Delete YOUR messages from ALL groups (respecting whitelist)",
+        "menu_4": "PM + Media",
+        "menu_4_desc": "Full archive of private chat",
+        "menu_5": "Delete Data",
+        "menu_5_desc": "Completely remove downloaded user data by ID",
+        "menu_6": "Scheduler",
+        "menu_6_desc": "Setup background tasks (launchd/cron)",
+        "menu_7": "Settings",
+        "menu_7_desc": "Install quick aliases in terminal",
+        "menu_8": "About",
+        "menu_8_desc": "Help and feature descriptions",
+        "menu_9": "DB Export",
+        "menu_9_desc": "Create files (.txt/.json) from the local database",
+        "menu_lang": "Language / Язык",
+        "menu_exit": "Exit",
+        "choice_prompt": "Choose a menu item",
+        "prompt_target": "Enter target ID or username (0 - Back)",
+        "prompt_chat": "Specific chat ID (optional, Enter for all)",
+        "prompt_deep": "Enable DEEP MODE (context)? [y/N]",
+        "prompt_clean_target": "Enter ID or username to clean (or 'all')",
+        "prompt_dry_run": "Dry Run mode (safe)? [Y/n]",
+        "prompt_pm_target": "Enter target ID for PM archive (0 - Back)",
+        "prompt_purge_id": "Enter user ID for COMPLETE removal (0 - Back)",
+        "about_text": "TG.MSG.CLEANER v3.0 — Powerful tool for Telegram message history management.\nSupports incremental export, deep context search, and safe cleaning.",
+        "goodbye": "Goodbye!",
+        "error_locked": "Error: Process already running (lock file active).",
+        
+        # General Elements
+        "back": "Back",
+        "cancel": "Cancel",
+        "confirm": "Do you confirm?",
+        "success": "Success!",
+        "error": "Error",
+        "loading": "Loading...",
+        "press_enter": "Press Enter to continue...",
+        "action_complete": "Action completed.",
+        
+        # Prompts
+        "enter_id": "Enter ID or username",
+        "search_depth": "Search depth (window)",
+        "depth_label": "Depth",
+        "mode_select": "Choose mode",
+        "invalid_choice": "Invalid choice. Please select item from {start} to {end}.",
+        
+        # Submenu Export
+        "sub_export_title": "User Export",
+        "sub_export_info": "Download history from chats where you are present and have met the target at least once.",
+        "export_start": "Starting export for {uid} (window: {window})...",
+        
+        # Submenu Update
+        "sub_update_title": "Archive Update",
+        "sub_update_info": "Sync new messages for all previously exported targets.",
+        "update_run": "Run synchronization",
+        "update_starting": "Starting mass update...",
+        
+        # Clean Submenu
+        "sub_clean_confirm": "ATTENTION: This will trigger a cleanup of YOUR messages in ALL groups/supergroups.",
+        "sub_clean_info": "Private dialogues are NOT affected. Whitelist from config.json is respected.",
+        "clean_dry": "Dry Run (safe)",
+        "clean_real": "Live Deletion",
+        "clean_confirm": "Are you sure? Messages will be deleted.",
+        
+        # Submenu Delete Data
+        "sub_delete_title": "Complete Data Removal",
+        "sub_delete_info": "Irreversible deletion of all local data (DB + files) by user ID.",
+        "no_targets": "No tracked users in the database yet.",
+        "select_user_to_delete": "Select user for complete data removal",
+        "delete_warning": "WARNING: ALL messages and files for '{name}' will be deleted.",
+        
+        # Submenu Scheduler
+        "sub_sched_title": "Task Scheduler",
+        "sub_sched_info": "Set up the system to automatically clear messages in the background.",
+        "sched_setup": "Configure schedule",
+        
+        # Submenu Settings
+        "sub_setup_title": "System Settings",
+        "sub_setup_info": "Install quick aliases (tg, tge, tgu) for easy terminal startup.",
+        "setup_aliases": "Install aliases (tg, tge, tgu...)",
+        "setup_api": "Configure Telegram API (ID/Hash)",
+        
+        # Submenu DB Export
+        "sub_db_export_title": "Export from Database",
+        "sub_db_export_info": "Create new files (.txt/.json) based on history from SQLite.",
+        "select_user_export": "Select user for export",
+        "user_selected": "Selected: {name}",
+        "select_format": "Select format",
+        "fmt_json": "JSONL (advanced, with metadata)",
+        "fmt_txt": "Plain Text (pretty, for reading)",
+        "db_export_start": "Starting DB export for {name} ({count} messages)...",
+        "db_export_complete": "Export complete! Processed {count} messages.",
+        "db_export_saved": "Files saved to folder {dir}",
+        "file_removed": "  [x] Removed old export file: {file}",
+        "file_remove_error": "  [!] Error removing {file}: {err}",
+        "file_rotated": "File full ({max} messages). Moving to part {part}: {file}",
+        "process_batch": "  🚀 Processing {name}: [{n}/{total}] targets...",
+        "process_done": "  ✅ Done: {name}",
+        "export_finished_simple": "Export finished!",
+        "error_user_update": "Error updating user {uid}: {error}",
+        "update_complete": "Update complete. Total new messages: {total}",
+        
+        # PM Exporter
+        "cat_photos": "photo",
+        "cat_videos": "video",
+        "cat_video_notes": "video note (round)",
+        "cat_voices": "voice message",
+        "cat_gifs": "GIF animation",
+        "cat_documents": "document",
+        "cat_media": "media",
+        "empty_msg": "(empty message)",
+        "error_group_id": "⚠️  Specified ID belongs to a group, not a user. Use 'export' for groups.",
+        "error_find_user": "⚠️  Error finding user: {err}",
+        "error_folder_not_found": "⚠️  Export folder not found - resetting progress, redownloading.",
+        "incremental_mode": "🔄 Incremental mode: downloading messages newer than ID {id}",
+        "scanning_pm": "⏳ Scanning private dialog...",
+        "stats_messages": "📝 Messages in log: {count}",
+        "stats_media": "📥 Media files downloaded: {count}",
+        "stats_duplicates": "♻️  Duplicates skipped: {count}",
+        "stats_skipped": "⏭️  Skipped (exceeding {max}): {count}",
+        "pm_export_complete": "✅ Private dialog export complete!",
+        "pm_folder": "📂 Results: {dir}",
+        
+        # Setup
+        "setup_title": "=== Installing quick aliases for tg-msg-manager ===\n",
+        "setup_work_dir": "📂 Working directory: {dir}",
+        "setup_python": "🐍 Python: {exe}\n",
+        "setup_success_unix": "✅ Aliases successfully added to: {path}",
+        "setup_activate": "   To activate, run: source {path}",
+        "setup_new_term": "   Or just open a new terminal.",
+        "setup_success_win": "✅ Shortcuts (.bat) created in folder: {dir}",
+        "setup_win_path": "   Add this folder to your system PATH variable,",
+        "setup_win_path_2": "   to use tgr, tgd, tge, tgu, tgpm commands from anywhere.",
+        "setup_platform_error": "⚠️  Platform {plt} is not supported for auto-setup.",
+        "alias_header": "Available commands:",
+        "alias_tgr": "🛡️  Rehearsal (dry-run)",
+        "alias_tgd": "🧨  Real deletion of messages",
+        "alias_tge": "📥  Export messages from groups (+ user ID)",
+        "alias_tgu": "🔄  Update all exports",
+        "alias_tgpm": "💬  Private chat archive with media (+ user ID)",
+        "alias_tg": "📖  Show this help",
+        
+        # Scheduler
+        "sched_exclusions_title": "\n=== Configuration Exclusions ===",
+        "sched_exclusions_info": "Auto-clean calls can bypass important chats (Blacklist).",
+        "sched_exclusions_prompt": "Do you want to add more chat IDs to the exclusion list (comma-separated)? Leave empty to skip: ",
+        "sched_config_updated": "Config updated! Added {count} new IDs to 'exclude_chats'.",
+        "sched_setup_title": "=== Setup Auto-Message Deletion (Auto-Clean) ===\n",
+        "sched_mode_prompt": "Select schedule mode:",
+        "sched_mode_1": " 1. Interval-based (e.g., every 12 hours)",
+        "sched_mode_2": " 2. Specific time (e.g., every day at 05:00)",
+        "sched_time_prompt": "Enter time in HH:MM format (24-hour, default 05:00): ",
+        "sched_interval_prompt": "Enter launch interval in hours (default 12): ",
+        "sched_registering": "\nRegistering daemon on platform: {plt}",
+        "sched_success_macos": "✅ Daemon successfully registered ({mode}) and started on macOS!",
+        "sched_success_linux": "✅ Task successfully added to Linux crontab ({mode})!",
+        "sched_success_win": "✅ Task successfully added to Windows Task Scheduler ({mode})!",
+        "sched_daily_at": "daily at {time}",
+        "sched_every_x_hours": "every {hours} hours",
+        "sched_complete": "\nConfiguration complete!",
+        
+        # Core
+        "db_locked_waiting": "⚠️ Session database is locked by another process. Waiting {delay}s... (Attempt {i}/{max})",
+        "db_locked_error": "❌ Error: Session database remains locked for too long.",
+        "db_locked_check": "Check if other instances of tg_msg_manager are running (e.g., background 'update' or 'clean').",
+        "clean_summary": "🧹 Cleaning summary for {name}:",
+        "clean_found": "   🔍 Messages found: {count}",
+        "clean_deleted": "   🧨 Deleted: {count}",
+        "clean_dry_summary": "   🛡️ (Dry-run: messages were not deleted)",
+        "chat_header": "\nChat #{n}: {title} (id={id})",
+        "found_candidates": "Found matching messages: {count}",
+        "dry_run_no_deletion": "DRY-RUN: deletion skipped.",
+        "deleted_in_chat": "Deleted messages in chat '{title}': {count}",
+        "summary_header": "\n=== Summary ===",
+        "dialogs_processed": "Dialogs processed: {total}, groups/channels: {eligible}",
+        "total_candidates_found": "Total matching messages: {count}",
+        "dry_run_info": "This was a DRY-RUN, nothing was deleted. Set 'dry_run' to false in config.json for real deletion.",
+        "total_deleted_msgs": "Total deleted messages: {count}",
+        "settings_loaded": "Settings loaded:",
+        "continue_with_settings": "Continue with these settings? [y/N]: ",
+        
+        # API Setup
+        "api_setup_title": "Telegram API Setup",
+        "api_help_1": "API ID and API Hash are required for the script to work.",
+        "api_help_site": "Go to: https://my.telegram.org",
+        "api_help_steps": "Enter phone -> API development tools -> Create app -> Copy API ID and API Hash.",
+        "api_save_success": "API settings successfully saved to config.local.json!",
+        
+        # Other from exporter/pm
+        "msg_processed": "Processed: {count}/{total}...",
+        "pm_export_start": "Starting private chat export for {uid}...",
+
+        # Help
+        "help_title": "Help & Information",
+        "help_topic_1": "Export (Normal vs DEEP)",
+        "help_topic_2": "Update (Smart Sync)",
+        "help_topic_3": "Message Cleaning",
+        "help_topic_4": "Private Archives (PM)",
+        "help_topic_5": "Data Removal",
+        "help_topic_6": "Schedule & Automation",
+        "help_desc_1": "• Normal: Author messages only.\n• DEEP: Analyzes history and downloads context (replies).",
+        "help_desc_2": "Automatic sync for all targets. Remembers last ID and downloads only new data.",
+        "help_desc_3": "Delete YOUR messages from groups. Dry-run for testing, Real for deletion.",
+        "help_desc_4": "Full private chat export (both participants + media).",
+        "help_desc_5": "Clear local database and files for a specific user ID.",
+        "help_desc_6": "Scheduler: Configure launchd/cron.\nSetup: Install tg/tge/tgu aliases.",
+    }
+}
+
+# Alias for standard localization pattern
+_ = _t
