@@ -10,7 +10,10 @@ All notable changes to this project will be documented in this file in both Engl
 - **Chat-like TXT Export**: Completely redesigned the plain text output with message grouping, date headers, and reply quotes for better readability.
 - **Metadata Integrity**: Added explicit chat metadata tracking (`upsert_chat`) and fixed name mix-ups in the storage layer.
 - **Infrastructure**: Optimized `.gitignore` for better protection of session and database artifacts.
-- **Reliability**: Fixed a critical issue where emergency JSON exports were bypassed on Ctrl+C by switching to async-native signal handling.
+- **Reliability & Performance**: 
+  - Fixed a critical issue where emergency JSON exports were bypassed on Ctrl+C by switching to async-native signal handling.
+  - Implemented 'Cached Skip' optimization: synchronized scans now skip context extraction for already-processed messages, drastically improving resume speed.
+  - Resolved `TypeError` in the global update service and missing type imports.
 
 ### Изменения (RU)
 - **Улучшенный интерфейс CLI**: Переработаны списки выбора пользователей: теперь отображается `Имя автора (ID) | Название группы`.
@@ -19,7 +22,10 @@ All notable changes to this project will be documented in this file in both Engl
 - **TXT-экспорт в стиле чата**: Полностью изменен формат текстовых файлов — теперь сообщения группируются по автору, добавлены заголовки дат и цитаты ответов.
 - **Целостность данных**: Добавлено отслеживание метаданных групп и исправлена путаница имен пользователей и чатов.
 - **Инфраструктура**: Оптимизирован `.gitignore` для надежного исключения файлов сессий и баз данных.
-- **Надежность**: Исправлена критическая проблема, из-за которой аварийный экспорт в JSON не срабатывал при нажатии Ctrl+C.
+- **Надежность и Скорость**: 
+  - Исправлена критическая проблема с игнорированием Ctrl+C и сбоем аварийного экспорта.
+  - Внедрена оптимизация «Пропуск кеша», ускоряющая повторную синхронизацию в десятки раз.
+  - Исправлен `TypeError` в режиме общего обновления и ошибки импортов.
 
 ### Fixed
 - Resolved `AttributeError` in `DBExportService` related to wrong message ID attribute.

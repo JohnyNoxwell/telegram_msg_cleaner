@@ -133,6 +133,11 @@ class BaseStorage(ABC):
     def upsert_chat(self, chat_id: int, title: str, chat_type: Optional[str] = None):
         """Persists or updates chat metadata in the storage."""
         pass
+    
+    @abstractmethod
+    def has_target_link(self, chat_id: int, message_id: int, target_id: int) -> bool:
+        """Returns True if the message is already linked to the specified target."""
+        pass
 
     @abstractmethod
     def close(self):

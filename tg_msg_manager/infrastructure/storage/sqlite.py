@@ -4,7 +4,7 @@ import logging
 import time
 import asyncio
 import threading
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import datetime
 from .interface import BaseStorage
 from ...core.models.message import MessageData, SCHEMA_VERSION
@@ -17,8 +17,9 @@ class SQLiteStorage(BaseStorage):
     Uses WAL mode for concurrency and atomic transactions for speed.
     """
 
-    def __init__(self, db_path: str = "messages.db"):
+    def __init__(self, db_path: str = "messages.db", process_manager: Optional[Any] = None):
         self.db_path = db_path
+        self._pm = process_manager
         self._lock = threading.Lock()
         self._conn = self._get_connection()
         self._init_db()
@@ -27,6 +28,11 @@ class SQLiteStorage(BaseStorage):
         self._write_queue = asyncio.Queue()
         self._worker_task = None
         self._shutdown_event = asyncio.Event()
+
+    def should_stop(self) -> bool:
+        """Returns True if a shutdown has been requested internally or via ProcessManager."""
+        external_stop = self._pm.shutdown_requested if self._pm else False
+        return self._shutdown_event.is_set() or external_stop
 
     async def start(self):
         """Starts the background writer task."""
@@ -37,9 +43,6 @@ class SQLiteStorage(BaseStorage):
         """Sets the shutdown event to signal workers to stop."""
         self._shutdown_event.set()
 
-    def should_stop(self) -> bool:
-        """Returns True if a shutdown has been requested."""
-        return self._shutdown_event.is_set()
 
     async def close(self):
         """Flushes the queue and stops the background writer."""
@@ -652,6 +655,16 @@ class SQLiteStorage(BaseStorage):
             if "no such table" in str(e):
                 return []
             raise
+
+    def has_target_link(self, chat_id: int, message_id: int, target_id: int) -> bool:
+        """Returns True if the message is already linked to the specified target."""
+        with self._get_connection() as conn:
+            res = conn.execute("""
+                SELECT 1 FROM message_target_links 
+                WHERE chat_id = ? AND message_id = ? AND target_user_id = ?
+                LIMIT 1
+            """, (chat_id, message_id, target_id)).fetchone()
+            return res is not None
 
     def get_user_messages(self, user_id: int) -> List[MessageData]:
         """

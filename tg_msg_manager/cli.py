@@ -304,7 +304,7 @@ async def main_menu():
     
     # Use async-native signals for reliable graceful shutdown
     pm.setup_async_signals(asyncio.get_running_loop())
-    storage = SQLiteStorage(settings.db_path)
+    storage = SQLiteStorage(settings.db_path, process_manager=pm)
     await storage.start()
     client = TelethonClientWrapper(settings.session_name, settings.api_id, settings.api_hash)
     

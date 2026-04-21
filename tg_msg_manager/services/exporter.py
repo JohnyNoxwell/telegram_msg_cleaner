@@ -158,8 +158,21 @@ class ExportService:
                     continue 
 
                 if active_deep:
+                    # OPTIMIZATION: Skip context extraction if message is already linked to this target
+                    if not force_resync and self.storage.has_target_link(chat_id, msg_data.message_id, uid):
+                        w_processed += 1
+                        if w_processed % 100 == 0:
+                            await draw_status(f"(Skipping cached: {msg_data.message_id})")
+                        continue
+
+                    # OPTIMIZATION: Stop immediately on signal
+                    if self.storage.should_stop(): 
+                        break
+
                     w_context_batch.append(msg_data)
                     if len(w_context_batch) >= context_batch_size:
+                        if self.storage.should_stop(): break # Double check
+                        
                         await self.context_engine.extract_batch_context(
                             entity, w_context_batch, 
                             target_id=uid,
@@ -302,9 +315,9 @@ class ExportService:
         print(f"\n✅ Global Export Finished! Total synced: {total_processed} messages across all dialogs.")
         return total_processed
 
-    async def sync_all_outdated(self) -> Set[int]:
+    async def sync_all_outdated(self, threshold_seconds: int = 86400) -> Set[int]:
         """Runs synchronization for all chats that haven't been updated in a while or are incomplete."""
-        outdated = self.storage.get_outdated_chats()
+        outdated = self.storage.get_outdated_chats(threshold_seconds=threshold_seconds)
         updated_uids = set()
         
         if not outdated:
