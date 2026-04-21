@@ -97,7 +97,14 @@ class ExportService:
 
         mode_str = f"DEEP (Depth {active_depth})" if active_deep else "FLAT"
         status_str = " (Resuming history...)" if tail_id > 0 and not is_complete else (" (Updating...)" if head_id > 0 else "")
-        header = f"👤 Target: {chat_title}{user_label} | Mode: {mode_str}{status_str}"
+        
+        CLR_CHAT = "\033[95m"  # Magenta
+        CLR_USER = "\033[93m"  # Yellow
+        CLR_RESET = "\033[0m"
+        
+        colored_title = f"{CLR_CHAT}{chat_title}{CLR_RESET}"
+        colored_user = f"{CLR_USER}{user_label}{CLR_RESET}"
+        header = f"💬 Chat: {colored_title}{colored_user} | Mode: {mode_str}{status_str}"
         print(f"\n{header}")
         
         # 5. Determine Scan Boundaries
@@ -130,13 +137,17 @@ class ExportService:
         if not ranges:
             ranges.append({"offset": current_max, "stop": head_id, "role": "HEAD"})
 
-        if hasattr(self.context_engine, '_processed_ids'):
-            self.context_engine._processed_ids.clear()
+        # ANSI Colors
+        CLR_USER = "\033[93m"  # Yellow
+        CLR_CHAT = "\033[95m"  # Magenta
+        CLR_COUNT = "\033[92m" # Green
+        CLR_ID = "\033[94m"    # Blue
+        CLR_RESET = "\033[0m"
 
         async def draw_status(extra=""):
             db_total = self.storage.get_message_count(chat_id, target_id=uid)
-            # Add a bit of movement even if count doesn't change
-            sys.stdout.write(f"\r   📊 Total Exported: {db_total} messages {extra}                   ")
+            # Live counter line with colors
+            sys.stdout.write(f"\r   📊 [{CLR_ID}Syncing{CLR_RESET}] Total in DB: {CLR_COUNT}{db_total}{CLR_RESET} messages {extra}\t\t")
             sys.stdout.flush()
 
         async def scan_worker(offset, stop_id, role="TAIL"):
@@ -291,10 +302,13 @@ class ExportService:
         print(f"   Scanning {len(targets)} dialogues...")
         
         total_processed = 0
+        CLR_CHAT = "\033[95m"  # Magenta
+        CLR_RESET = "\033[0m"
+
         for i, dialog in enumerate(targets):
             try:
                 dialog_title = self._get_entity_name(dialog)
-                print(f"\n   --- [{i+1}/{len(targets)}] Scan: \"{dialog_title}\" ---")
+                print(f"\n   --- [{i+1}/{len(targets)}] Scan: {CLR_CHAT}\"{dialog_title}\"{CLR_RESET} ---")
                 
                 processed = await self.sync_chat(
                     dialog,
@@ -312,7 +326,9 @@ class ExportService:
             except Exception as e:
                 logger.error(f"Error scanning dialog {getattr(dialog, 'name', 'Unknown')}: {e}")
         
-        print(f"\n✅ Global Export Finished! Total synced: {total_processed} messages across all dialogs.")
+        CLR_COUNT = "\033[92m" # Green
+        CLR_RESET = "\033[0m"
+        print(f"\n{CLR_COUNT}✅ Global Export Finished!{CLR_RESET} Total synced: {CLR_COUNT}{total_processed}{CLR_RESET} messages across all dialogs.")
         return total_processed
 
     async def sync_all_outdated(self, threshold_seconds: int = 86400) -> Set[int]:

@@ -350,7 +350,13 @@ async def main_menu():
                     "окружающим контекстом для последующего анализа."
                 )
                 target_str = TerminalInput.prompt_with_esc(_("prompt_target") + ": ")
-                if target_str is None or target_str == "0": continue
+                if target_str is None or target_str.strip() == "0": continue
+                if not target_str.strip():
+                    print("⚠️ Error: Target ID or Username cannot be empty.")
+                    sys.stdout.write("\n" + _("press_enter"))
+                    sys.stdout.flush()
+                    TerminalInput.get_char()
+                    continue
                 
                 chat_str = TerminalInput.prompt_with_esc("Chat ID (Leave empty for config-based scan): ")
                 if chat_str is None: continue
@@ -497,11 +503,18 @@ async def main_menu():
                 )
                 users = storage.get_primary_targets()
                 if users:
+                    CLR_USER = "\033[93m"  # Yellow
+                    CLR_ID = "\033[94m"    # Blue
+                    CLR_CHAT = "\033[95m"  # Magenta
+                    CLR_SUCCESS = "\033[92m" # Green
+                    CLR_RESET = "\033[0m"
+
                     print("\n" + _("select_user_export") + ":")
                     for i, u in enumerate(users):
-                        display_name = u['author_name']
-                        chat_info = f" | {u['chat_title']}" if u.get('chat_title') else ""
-                        print(f" [{i+1}] {display_name} ( ID: {u['user_id']} ){chat_info}")
+                        display_name = f"{CLR_USER}{u['author_name']}{CLR_RESET}"
+                        user_id_str = f"{CLR_ID}{u['user_id']}{CLR_RESET}"
+                        chat_info = f" | {CLR_CHAT}{u['chat_title']}{CLR_RESET}" if u.get('chat_title') else ""
+                        print(f" [{i+1}] {display_name} ( ID: {user_id_str} ){chat_info}")
                     
                     idx_str = TerminalInput.prompt_with_esc("\n" + _("choice_prompt") + " (0 - " + _("back") + "): ")
                     if idx_str is None or idx_str == "0": continue
@@ -520,10 +533,15 @@ async def main_menu():
                         fmt_char = TerminalInput.get_char()
                         sys.stdout.write(fmt_char + "\n")
                         
+                        CLR_SUCCESS = "\033[92m" # Green
+                        CLR_RESET = "\033[0m"
+
                         if fmt_char == "1":
-                            await db_export_service.export_user_messages(u['user_id'], as_json=True)
+                            path = await db_export_service.export_user_messages(u['user_id'], as_json=True)
+                            if path: print(f" {CLR_SUCCESS}✅ EXPORT: {path}{CLR_RESET}")
                         elif fmt_char == "2":
-                            await db_export_service.export_user_messages(u['user_id'], as_json=False)
+                            path = await db_export_service.export_user_messages(u['user_id'], as_json=False)
+                            if path: print(f" {CLR_SUCCESS}✅ EXPORT: {path}{CLR_RESET}")
                         elif fmt_char == "0" or fmt_char == '\x1b':
                             continue
                         else:
