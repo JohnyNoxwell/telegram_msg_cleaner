@@ -42,19 +42,29 @@
 
 Для продвинутых пользователей доступны команды напрямую:
 
-*   **`tg export --user-id ID`**: Запуск умной синхронизации для конкретного пользователя.
-    *   `--chat-id ID`: Ограничить поиск конкретным чатом.
-    *   `--context-window N`: Размер захвата сообщений вокруг цели (по умолчанию 3).
-    *   `--depth N`: Глубина рекурсивного поиска связей (1-5, по умолчанию 3).
-    *   `--flat`: Отключить сбор контекста (только сообщения цели).
-    *   `--json`: Дублировать результат в JSON-файл.
-    *   `--force-resync`: Игнорировать кэш и перекачать историю заново.
+*   **Экспорт сообщений (`export`)**
+    *   Алиас: `tge --user-id ID`
+    *   Полная команда: `tg export --user-id ID`
+    *   Опции:
+        *   `--chat-id ID`: Ограничить поиск конкретным чатом.
+        *   `--context-window N`: Размер захвата сообщений вокруг цели (по умолчанию 3).
+        *   `--depth N`: Глубина рекурсивного поиска связей (1-5, по умолчанию 3).
+        *   `--flat`: Отключить сбор контекста (только сообщения цели).
+        *   `--json`: Дублировать результат в JSON-файл.
+        *   `--force-resync`: Игнорировать кэш и перекачать историю заново.
 
-*   **`tg clean`**: Глобальная очистка ваших сообщений.
-    *   `--apply`: **Боевой режим**. Без этого флага очистка идет в режиме теста (dry-run).
-    *   `--yes`: Пропустить подтверждение удаления.
+*   **Глобальная очистка (`clean`)**
+    *   Алиас (Боевой): `tgd`
+    *   Алиас (Тест): `tgr`
+    *   Полная команда: `tg clean --apply` (для удаления) или `tg clean` (для теста).
+    *   Опция `--yes`: Пропустить подтверждение удаления.
 
-*   **`tg db-export --user-id ID`**: Выгрузка накопленных данных из SQLite.
+*   **Обновление базы (`update`)**
+    *   Алиас: `tgu`
+    *   Полная команда: `tg update`
+
+*   **Экспорт из БД (`db-export`)**
+    *   Команда: `tg db-export --user-id ID`
 
 ---
 
@@ -121,19 +131,29 @@
 
 For power users, subcommands can be executed directly:
 
-*   **`tg export --user-id ID`**: Run deep sync for a specific user ID.
-    *   `--chat-id ID`: Target a specific chat only.
-    *   `--context-window N`: Number of neighbor messages to fetch (default: 3).
-    *   `--depth N`: Recursion depth for context extraction (1-5, default: 3).
-    *   `--flat`: Disable "Deep Mode" (fetch target messages only).
-    *   `--json`: Simultaneously export to JSON file.
-    *   `--force-resync`: Ignore sync markers and re-scan history.
+*   **Message Export (`export`)**
+    *   Alias: `tge --user-id ID`
+    *   Full Command: `tg export --user-id ID`
+    *   Options:
+        *   `--chat-id ID`: Target a specific chat only.
+        *   `--context-window N`: Number of neighbor messages to fetch (default: 3).
+        *   `--depth N`: Recursion depth for context extraction (1-5, default: 3).
+        *   `--flat`: Disable "Deep Mode" (fetch target messages only).
+        *   `--json`: Simultaneously export to JSON file.
+        *   `--force-resync`: Ignore sync markers and re-scan history.
 
-*   **`tg clean`**: Global self-message cleanup.
-    *   `--apply`: **Live Mode**. Without this flag, cleanup runs in Dry-Run mode.
-    *   `--yes`: Skip the safety confirmation prompt.
+*   **Global Cleanup (`clean`)**
+    *   Alias (Apply): `tgd`
+    *   Alias (Dry-run): `tgr`
+    *   Full Command: `tg clean --apply` (to delete) or `tg clean` (to test).
+    *   Option `--yes`: Skip the safety confirmation prompt.
 
-*   **`tg db-export --user-id ID`**: Extract stored data from SQLite to JSON/TXT.
+*   **Smart Update (`update`)**
+    *   Alias: `tgu`
+    *   Full Command: `tg update`
+
+*   **Database Export (`db-export`)**
+    *   Command: `tg db-export --user-id ID`
 
 ---
 
