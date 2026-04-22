@@ -75,6 +75,8 @@ from .services.exporter import ExportService
 from .services.cleaner import CleanerService
 from .services.db_exporter import DBExportService
 from .services.private_archive import PrivateArchiveService
+from .services.alias_manager import AliasManager
+from .services.scheduler import setup_scheduler, remove_scheduler
 from .i18n import _, set_lang, get_lang
 
 logger = logging.getLogger(__name__)
@@ -177,6 +179,9 @@ async def run_cli():
 
     # schedule
     subparsers.add_parser("schedule")
+    
+    # setup (alias installation)
+    subparsers.add_parser("setup")
 
     # db-export
     db_parser = subparsers.add_parser("db-export")
@@ -213,11 +218,62 @@ async def run_cli():
             sys.stdout.flush()
 
     # Register async signals
-    pm.setup_async_signals(asyncio.get_running_loop(), emergency_export_callback)
+    pm.setup_async_signals(asyncio.get_running_loop())
     
+    # 1. Commands not needing DB or Client
+    if args.command == "setup":
+        am = AliasManager()
+        res = am.install()
+        if "success" in res:
+            print(res["message"])
+            if "activate_cmd" in res:
+                print(res["activate_cmd"])
+            print("\n" + _("alias_header"))
+            for line in am.get_alias_help()[1:]:
+                print(line)
+        else:
+            print(res.get("error", "Error during setup"))
+        pm.release_lock()
+        return
+
+    if args.command == "schedule":
+        await setup_scheduler()
+        pm.release_lock()
+        return
+
+    # 2. Commands needing Storage
+    storage = SQLiteStorage(settings.db_path)
+    db_export_service = DBExportService(storage)
     await storage.start()
-    client = TelethonClientWrapper(settings.session_name, settings.api_id, settings.api_hash)
     
+    # Update emergency callback with active storage
+    async def emergency_export_callback():
+        uid = state.get("active_uid")
+        storage.request_stop()
+        if uid:
+            sys.stdout.write(f"\n⚠️ Performing emergency JSON export for User ID: {uid}...\n")
+            path = await db_export_service.export_user_messages(uid, as_json=True, include_date=False)
+            if path: sys.stdout.write(f"✅ Emergency dump saved to: {path}\n")
+            sys.stdout.flush()
+            
+    pm.setup_async_signals(asyncio.get_running_loop(), emergency_export_callback)
+
+    if args.command == "delete":
+        uid = resolve_id(args.user_id)
+        await CleanerService(None, storage).purge_user_data(uid)
+        await storage.close()
+        pm.release_lock()
+        return
+
+    if args.command == "db-export":
+        uid = resolve_id(args.user_id)
+        await db_export_service.export_user_messages(uid, as_json=args.json)
+        await storage.close()
+        pm.release_lock()
+        return
+
+    # 3. Commands needing Client + Storage
+    client = TelethonClientWrapper(settings.session_name, settings.api_id, settings.api_hash)
     export_service = ExportService(client, storage)
     cleaner_service = CleanerService(client, storage, whitelist=settings.whitelist_chats)
     pm_service = PrivateArchiveService(client, storage)
@@ -226,11 +282,10 @@ async def run_cli():
         await client.connect()
         if args.command == "export":
             uid = resolve_id(args.user_id)
-            state["active_uid"] = uid # Set for emergency export
-            
+            state["active_uid"] = uid
             user_ent, chat_ent = await get_safe_user_and_chat(client, args.user_id, args.chat_id)
             if user_ent:
-                state["active_uid"] = user_ent.id # Update with real ID if resolved
+                state["active_uid"] = user_ent.id
                 storage.upsert_user(
                     user_id=user_ent.id,
                     first_name=getattr(user_ent, 'first_name', None),
@@ -238,61 +293,45 @@ async def run_cli():
                     username=getattr(user_ent, 'username', None)
                 )
             
-            # Start sync
             try:
                 if chat_ent:
-                    # Sync specific chat
                     await export_service.sync_chat(
-                        chat_ent,
-                        from_user_id=state["active_uid"],
-                        deep_mode=args.deep,
-                        force_resync=args.force_resync,
-                        context_window=args.context_window,
-                        max_cluster=args.max_cluster,
+                        chat_ent, from_user_id=state["active_uid"],
+                        deep_mode=args.deep, force_resync=args.force_resync,
+                        context_window=args.context_window, max_cluster=args.max_cluster,
                         recursive_depth=args.depth
                     )
                 elif user_ent:
-                    # Global sync for user - constrained by config
                     await export_service.sync_all_dialogs_for_user(
-                        state["active_uid"],
-                        target_chat_ids=settings.chats_to_search_user_msgs,
-                        deep_mode=args.deep,
-                        force_resync=args.force_resync,
-                        context_window=args.context_window,
-                        max_cluster=args.max_cluster,
+                        state["active_uid"], target_chat_ids=settings.chats_to_search_user_msgs,
+                        deep_mode=args.deep, force_resync=args.force_resync,
+                        context_window=args.context_window, max_cluster=args.max_cluster,
                         recursive_depth=args.depth
                     )
                 else:
                     print(f"❌ Error: Could not resolve target {args.user_id}")
                 
-                # Perform FINAL export from DB to Filesystem
                 print(f"\n📂 Finalizing export to filesystem...")
                 path = await db_export_service.export_user_messages(state["active_uid"], as_json=True)
-                if path:
-                    print(f"✅ Export successfully saved to: {path}")
+                if path: print(f"✅ Export successfully saved to: {path}")
 
             except Exception as e:
-                # If shutdown requested, we don't log as error
-                if not pm.should_stop():
-                    logger.error(f"Error during export: {e}")
+                if not pm.should_stop(): logger.error(f"Error during export: {e}")
 
         elif args.command == "update":
             await export_service.sync_all_outdated()
-        elif args.command == "clean":
-            # Decide dry_run: Safe default is True. If --apply or --yes is set, it becomes False.
-            # If --dry-run is explicitly passed, it stays True.
-            is_dry = True
-            if args.apply or args.yes:
-                is_dry = False
-            if args.dry_run is True:
-                is_dry = True
-            
-            deleted = await cleaner_service.global_self_cleanup(dry_run=is_dry)
-            print(f"\n{_('summary_header')}")
-            print(_("total_deleted_msgs", count=deleted))
-            if is_dry:
-                print(f"\033[93m{_('dry_run_info')}\033[0m")
 
+        elif args.command == "clean":
+            is_dry = True
+            if args.apply or args.yes: is_dry = False
+            if args.dry_run is True: is_dry = True
+            deleted = await cleaner_service.global_self_cleanup(dry_run=is_dry)
+            print(f"\n{_('summary_header')}\n{_('total_deleted_msgs', count=deleted)}")
+            if is_dry: print(f"\033[93m{_('dry_run_info')}\033[0m")
+
+        elif args.command == "export-pm":
+            user_ent, unused_chat = await get_safe_user_and_chat(client, args.user_id)
+            if user_ent: await pm_service.archive_pm(user_ent)
 
     finally:
         await client.disconnect()
@@ -326,6 +365,7 @@ async def main_menu():
     cleaner_service = CleanerService(client, storage, whitelist=settings.whitelist_chats)
     db_export_service = DBExportService(storage)
     pm_service = PrivateArchiveService(client, storage)
+    alias_manager = AliasManager()
 
     try:
         await client.connect()
@@ -345,6 +385,8 @@ async def main_menu():
             print(f" [3] {_('menu_3')} ({_('menu_3_desc')})")
             print(f" [4] {_('menu_4')} ({_('menu_4_desc')})")
             print(f" [5] {_('menu_5')} ({_('menu_5_desc')})")
+            print(f" [6] {_('menu_6')} ({_('menu_6_desc')})")
+            print(f" [7] {_('menu_7')} ({_('menu_7_desc')})")
             print(f" [8] {_('menu_8')}")
             print(f" [9] {_('menu_9')}")
             print(f" [L] {_('menu_lang')}")
@@ -508,6 +550,39 @@ async def main_menu():
                         print("Invalid selection.")
                 else:
                     print(_("no_targets"))
+                sys.stdout.write("\n" + _("press_enter"))
+                sys.stdout.flush()
+                TerminalInput.get_char()
+
+            elif choice == "6":
+                print_submenu_header(
+                    _("menu_6"),
+                    _("help_desc_6")
+                )
+                await setup_scheduler()
+                sys.stdout.write("\n" + _("press_enter"))
+                sys.stdout.flush()
+                TerminalInput.get_char()
+
+            elif choice == "7":
+                print_submenu_header(
+                    _("menu_7"),
+                    _("sub_setup_info")
+                )
+                print(_("setup_title"))
+                res = alias_manager.install()
+                if "success" in res:
+                    print(res["message"])
+                    if "activate_cmd" in res:
+                        print(res["activate_cmd"])
+                        print(_("setup_new_term"))
+                    
+                    print("\n" + _("alias_header"))
+                    for line in alias_manager.get_alias_help()[1:]:
+                        print(line)
+                else:
+                    print(res.get("error", "Unknown error during setup."))
+                
                 sys.stdout.write("\n" + _("press_enter"))
                 sys.stdout.flush()
                 TerminalInput.get_char()
