@@ -38,13 +38,43 @@
 
 ---
 
+### 📊 Подробный CLI Reference
+
+Для продвинутых пользователей доступны команды напрямую:
+
+*   **`tg export --user-id ID`**: Запуск умной синхронизации для конкретного пользователя.
+    *   `--chat-id ID`: Ограничить поиск конкретным чатом.
+    *   `--context-window N`: Размер захвата сообщений вокруг цели (по умолчанию 3).
+    *   `--depth N`: Глубина рекурсивного поиска связей (1-5, по умолчанию 3).
+    *   `--flat`: Отключить сбор контекста (только сообщения цели).
+    *   `--json`: Дублировать результат в JSON-файл.
+    *   `--force-resync`: Игнорировать кэш и перекачать историю заново.
+
+*   **`tg clean`**: Глобальная очистка ваших сообщений.
+    *   `--apply`: **Боевой режим**. Без этого флага очистка идет в режиме теста (dry-run).
+    *   `--yes`: Пропустить подтверждение удаления.
+
+*   **`tg db-export --user-id ID`**: Выгрузка накопленных данных из SQLite.
+
+---
+
+### 🚀 Быстрые Алиасы (Power User)
+
+Если вы настроили алиасы через `tg-msg-manager setup`, вам доступны короткие команды:
+
+*   `tgd` — **Live Deletion**: Мгновенный запуск очистки всех ваших сообщений (с подтверждением).
+*   `tgr` — **Dry Run**: Тестовое сканирование сообщений без их удаления.
+*   `tgu` — **Universal Update**: Автоматическое обновление всей накопленной базы по всем целям.
+
+---
+
 ### 💻 Установка и быстрый старт
 
 1. **Клонируйте репозиторий** и установите зависимости через `pip install .`
-2. **Алиасы**: Выполните `tg-msg-manager setup`, чтобы получить короткую команду `tg`.
+2. **Алиасы**: Выполните `tg-msg-manager setup`, чтобы получить короткую команду `tg` и быстрые алиасы.
 3. **Запуск**: Просто введите `tg` в терминале для входа в интерактивное меню.
 
-> 💡 **Навигация**: Используйте цифры **1-9** для выбора, **ESC** — назад/отмена, **0** — выход.
+> 💡 **Навигация в меню**: Используйте цифры **1-9** для выбора, **ESC** — назад/отмена, **0** — выход.
 
 ---
 ---
@@ -83,10 +113,41 @@
 
 ---
 
+### 📊 Detailed CLI Reference
+
+For power users, subcommands can be executed directly:
+
+*   **`tg export --user-id ID`**: Run deep sync for a specific user ID.
+    *   `--chat-id ID`: Target a specific chat only.
+    *   `--context-window N`: Number of neighbor messages to fetch (default: 3).
+    *   `--depth N`: Recursion depth for context extraction (1-5, default: 3).
+    *   `--flat`: Disable "Deep Mode" (fetch target messages only).
+    *   `--json`: Simultaneously export to JSON file.
+    *   `--force-resync`: Ignore sync markers and re-scan history.
+
+*   **`tg clean`**: Global self-message cleanup.
+    *   `--apply`: **Live Mode**. Without this flag, cleanup runs in Dry-Run mode.
+    *   `--yes`: Skip the safety confirmation prompt.
+
+*   **`tg db-export --user-id ID`**: Extract stored data from SQLite to JSON/TXT.
+
+---
+
+### 🚀 Power User Aliases
+
+After running `tg-msg-manager setup`, these shortcuts are available:
+
+*   `tgd` — **Live Deletion**: Instantly scan and delete your messages from all chats.
+*   `tgr` — **Dry Run**: Check what messages would be deleted without taking action.
+*   `tgu` — **Universal Update**: Progressively update all tracked targets in the database.
+
+---
+
 ### 💻 Installation & Quick Start
 
 1. **Clone & Install**: Run `pip install .` in the root directory.
-2. **Aliases**: Execute `tg-msg-manager setup` to register the `tg` shortcut.
+2. **Aliases**: Execute `tg-msg-manager setup` to register `tg` and power-user aliases.
 3. **Launch**: Simply type `tg` in your terminal to enter the premium interactive menu.
 
-> 💡 **Navigation Tip**: Use numbers **1-9** to select, **ESC** to go back/cancel, and **0** to exit.
+> 💡 **Menu Navigation**: Use numbers **1-9** to select, **ESC** to go back/cancel, and **0** to exit.
+
