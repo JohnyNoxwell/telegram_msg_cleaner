@@ -38,21 +38,37 @@ class AliasManager:
             return {"error": _("setup_platform_error", plt=self.os_type)}
 
     def _install_unix(self) -> Dict[str, str]:
-        """Adds aliases to .zshrc or .bashrc."""
+        """Adds aliases to .zshrc or .bashrc based on user template."""
         shell = os.environ.get("SHELL", "")
         rc_file = ".zshrc" if "zsh" in shell else ".bashrc"
         rc_path = os.path.join(self.home_dir, rc_file)
         
-        # If .zshrc doesn't exist but user is on Mac, default to .zshrc anyway
-        if not os.path.exists(rc_path) and self.os_type == "Darwin":
-            rc_path = os.path.join(self.home_dir, ".zshrc")
+        # Dynamically determine project root relative to this file
+        # This file is in tg_msg_manager/services/alias_manager.py
+        current_file_path = os.path.abspath(__file__)
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
+        
+        python_exe = "./.venv-test/bin/python3"
+        
+        # User's proven template
+        template = 'alias {alias}=\'cd "{root}" && {py} -m tg_msg_manager.cli {cmd}\''
+        
+        commands = {
+            "tg": "",
+            "tgr": "clean --dry-run --yes",
+            "tgd": "clean --apply --yes",
+            "tge": "export --deep --json --user-id",
+            "tgu": "update",
+            "tgpm": "export-pm --user-id"
+        }
 
         marker_start = "# >>> tg-msg-manager aliases >>>"
         marker_end = "# <<< tg-msg-manager aliases <<<"
         
         lines_to_add = [f"\n{marker_start}\n"]
-        for alias, cmd in self.ALIASES.items():
-            lines_to_add.append(f'alias {alias}="{cmd}"\n')
+        for alias, cmd in commands.items():
+            line = template.format(alias=alias, root=project_root, py=python_exe, cmd=cmd).strip()
+            lines_to_add.append(f"{line}\n")
         lines_to_add.append(f"{marker_end}\n")
 
         content = ""
@@ -60,7 +76,6 @@ class AliasManager:
             with open(rc_path, "r") as f:
                 content = f.read()
 
-        # Remove old block if exists
         if marker_start in content:
             start_idx = content.find(marker_start)
             end_idx = content.find(marker_end)
@@ -68,7 +83,6 @@ class AliasManager:
                 content = content[:start_idx] + content[end_idx + len(marker_end):]
                 content = content.strip() + "\n"
 
-        # Append new block
         with open(rc_path, "a" if content.endswith("\n") else "w") as f:
             if not content.endswith("\n") and content:
                 f.write("\n")
