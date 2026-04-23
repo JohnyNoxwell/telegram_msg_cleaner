@@ -376,12 +376,18 @@ class ExportService:
                 processed = await self.sync_chat(entity, from_user_id=from_user_id)
                 
                 if from_user_id not in user_stats:
-                    user_info = self.storage.get_user(from_user_id)
-                    name = "Unknown"
-                    if user_info:
-                        first = user_info.get("first_name") or ""
-                        last = user_info.get("last_name") or ""
-                        name = f"{first} {last}".strip() or user_info.get("username") or f"ID:{from_user_id}"
+                    # Get name from sync_targets (more reliable for reporting)
+                    target_info = self.storage.get_sync_status(chat_id, from_user_id)
+                    name = target_info.get("author_name") or f"ID:{from_user_id}"
+                    
+                    # Fallback to users table if target_info doesn't have a good name
+                    if not target_info.get("author_name") or target_info.get("author_name").startswith("ID:"):
+                        user_info = self.storage.get_user(from_user_id)
+                        if user_info:
+                            first = user_info.get("first_name") or ""
+                            last = user_info.get("last_name") or ""
+                            name = f"{first} {last}".strip() or user_info.get("username") or name
+                    
                     user_stats[from_user_id] = {"name": name, "count": 0}
                 
                 user_stats[from_user_id]["count"] += processed
