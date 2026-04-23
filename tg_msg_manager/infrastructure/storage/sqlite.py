@@ -663,7 +663,16 @@ class SQLiteStorage(BaseStorage):
         try:
             with self._get_connection() as conn:
                 rows = conn.execute("""
-                    SELECT t.*, u.username, u.first_name, u.last_name, c.title as chat_title
+                    SELECT 
+                        t.*, u.username, u.first_name, u.last_name, c.title as chat_title,
+                        (SELECT COUNT(*) 
+                         FROM message_target_links l 
+                         JOIN messages m ON l.chat_id = m.chat_id AND l.message_id = m.message_id
+                         WHERE l.target_user_id = t.user_id AND m.user_id = t.user_id) as user_msg_count,
+                        (SELECT COUNT(*) 
+                         FROM message_target_links l 
+                         JOIN messages m ON l.chat_id = m.chat_id AND l.message_id = m.message_id
+                         WHERE l.target_user_id = t.user_id AND m.user_id != t.user_id) as context_msg_count
                     FROM sync_targets t
                     LEFT JOIN users u ON t.user_id = u.user_id
                     LEFT JOIN chats c ON t.chat_id = c.chat_id

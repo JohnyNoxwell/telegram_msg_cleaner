@@ -388,6 +388,31 @@ def print_sync_summary(stats: dict):
         print(f" {CLR_USER}{name}{CLR_RESET} - {CLR_COUNT}{count}{CLR_RESET}")
     print("="*45)
 
+def print_target_list(targets: list):
+    """
+    Prints a formatted, color-coded list of primary targets with message statistics.
+    Unified rendering block for consistency across all menus.
+    """
+    CLR_USER = "\033[93m"    # Yellow
+    CLR_ID = "\033[94m"      # Blue
+    CLR_CHAT = "\033[95m"    # Magenta
+    CLR_SUCCESS = "\033[92m" # Green
+    CLR_STATS = "\033[90m"   # Gray
+    CLR_RESET = "\033[0m"
+
+    for i, u in enumerate(targets):
+        display_name = f"{CLR_USER}{u['author_name']}{CLR_RESET}"
+        user_id_str = f"{CLR_ID}{u['user_id']}{CLR_RESET}"
+        chat_info = f" | {CLR_CHAT}{u['chat_title']}{CLR_RESET}" if u.get('chat_title') else ""
+        
+        u_cnt = f"{CLR_SUCCESS}{u['user_msg_count']}{CLR_RESET}"
+        c_cnt = f"{CLR_STATS}{u['context_msg_count']}{CLR_RESET}"
+        
+        # Consistent format: Icon Name ( Msg Stats ) ( ID ) | Chat
+        stats = f" ( Сообщ: {u_cnt} | Контекст: {c_cnt} )"
+        idx_str = f"[{i+1:02}]"
+        print(f" {idx_str} 👤 {display_name}{stats} ( ID: {user_id_str} ){chat_info}")
+
 async def main_menu():
     setup_logging()
     pm = ProcessManager()
@@ -590,10 +615,7 @@ async def main_menu():
                 users = storage.get_primary_targets()
                 if users:
                     print("\nSelect user to purge:")
-                    for i, u in enumerate(users):
-                        display_name = u['author_name']
-                        chat_info = f" | {u['chat_title']}" if u.get('chat_title') else ""
-                        print(f" [{i+1}] {display_name} ( ID: {u['user_id']} ){chat_info}")
+                    print_target_list(users)
                     idx = TerminalInput.prompt_with_esc("\nChoice: ")
                     if idx and idx.isdigit() and 1 <= int(idx) <= len(users):
                         u = users[int(idx)-1]
@@ -658,18 +680,8 @@ async def main_menu():
                 )
                 users = storage.get_primary_targets()
                 if users:
-                    CLR_USER = "\033[93m"  # Yellow
-                    CLR_ID = "\033[94m"    # Blue
-                    CLR_CHAT = "\033[95m"  # Magenta
-                    CLR_SUCCESS = "\033[92m" # Green
-                    CLR_RESET = "\033[0m"
-
                     print("\n" + _("select_user_export") + ":")
-                    for i, u in enumerate(users):
-                        display_name = f"{CLR_USER}{u['author_name']}{CLR_RESET}"
-                        user_id_str = f"{CLR_ID}{u['user_id']}{CLR_RESET}"
-                        chat_info = f" | {CLR_CHAT}{u['chat_title']}{CLR_RESET}" if u.get('chat_title') else ""
-                        print(f" [{i+1}] {display_name} ( ID: {user_id_str} ){chat_info}")
+                    print_target_list(users)
                     
                     idx_str = TerminalInput.prompt_with_esc("\n" + _("choice_prompt") + " (0 - " + _("back") + "): ")
                     if idx_str is None or idx_str == "0": continue
