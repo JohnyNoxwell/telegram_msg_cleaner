@@ -11,10 +11,11 @@ class CleanerService:
     Enforces whitelist protection and dry-run mode.
     """
 
-    def __init__(self, client: TelegramClientInterface, storage: BaseStorage, whitelist: Set[int] = None):
+    def __init__(self, client: TelegramClientInterface, storage: BaseStorage, whitelist: Set[Any] = None, include_list: Set[Any] = None):
         self.client = client
         self.storage = storage
         self.whitelist = whitelist or set()
+        self.include_list = include_list or set()
 
     async def delete_chat_messages(self, entity: Any, message_ids: List[int], dry_run: bool = True) -> int:
         """
@@ -93,7 +94,43 @@ class CleanerService:
             is_eligible = d.is_group or d.is_channel
             if include_pms and d.is_user:
                 is_eligible = True
-            if is_eligible and d.id not in self.whitelist:
+            
+            if not is_eligible:
+                continue
+
+            # 1. Include List check (if not empty, only these are eligible)
+            if self.include_list:
+                in_include = False
+                if d.id in self.include_list:
+                    in_include = True
+                else:
+                    ent = getattr(d, 'entity', None)
+                    username = getattr(ent, 'username', None)
+                    if username and username in self.include_list:
+                        in_include = True
+                
+                if not in_include:
+                    continue
+
+            # 2. Robust whitelist check
+            is_whitelisted = False
+            # 1. Check ID (normalized to int in settings)
+            if d.id in self.whitelist:
+                is_whitelisted = True
+            
+            # 2. Check username/title if ID didn't match
+            if not is_whitelisted:
+                # Telethon Dialog entity might have a username
+                ent = getattr(d, 'entity', None)
+                username = getattr(ent, 'username', None)
+                if username and username in self.whitelist:
+                    is_whitelisted = True
+                elif name := getattr(d, 'name', None):
+                    # Fallback to display name (if user put it in whitelist)
+                    if name in self.whitelist:
+                        is_whitelisted = True
+
+            if not is_whitelisted:
                 eligible_dialogs.append(d)
 
         total = len(eligible_dialogs)

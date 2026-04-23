@@ -210,6 +210,7 @@ STRINGS = {
         "total_candidates_found": "Всего подходящих сообщений: {count}",
         "dry_run_info": "Это был DRY-RUN, ничего не удалено. Измени 'dry_run' в config.json на false для реального удаления.",
         "total_deleted_msgs": "Всего удалено сообщений: {count}",
+        "sync_summary_title": "ИТОГИ СИНХРОНИЗАЦИИ",
         "settings_loaded": "Настройки загружены:",
         "continue_with_settings": "Продолжить с этими настройками? [y/N]: ",
         
@@ -413,6 +414,7 @@ STRINGS = {
         "total_candidates_found": "Total matching messages: {count}",
         "dry_run_info": "This was a DRY-RUN, nothing was deleted. Set 'dry_run' to false in config.json for real deletion.",
         "total_deleted_msgs": "Total deleted messages: {count}",
+        "sync_summary_title": "SYNC SUMMARY",
         "settings_loaded": "Settings loaded:",
         "continue_with_settings": "Continue with these settings? [y/N]: ",
         

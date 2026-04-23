@@ -152,8 +152,8 @@ class ExportService:
 
         async def draw_status(extra=""):
             db_total = self.storage.get_message_count(chat_id, target_id=uid)
-            # Live counter line with colors
-            sys.stdout.write(f"\r   📊 [{CLR_ID}Syncing{CLR_RESET}] Total in DB: {CLR_COUNT}{db_total}{CLR_RESET} messages {extra}\t\t")
+            # Live counter line with colors + \033[K to clear leftover characters
+            sys.stdout.write(f"\r   📊 [{CLR_ID}Syncing{CLR_RESET}] Total in DB: {CLR_COUNT}{db_total}{CLR_RESET} messages {extra}\033[K")
             sys.stdout.flush()
 
         async def scan_worker(offset, stop_id, role="TAIL"):
@@ -174,14 +174,15 @@ class ExportService:
                 if not force_resync and role == "TAIL" and tail_id > 0 and tail_id < msg_data.message_id <= head_id:
                     continue 
 
-                if active_deep:
-                    # OPTIMIZATION: Skip context extraction if message is already linked to this target
-                    if not force_resync and self.storage.has_target_link(chat_id, msg_data.message_id, uid):
-                        w_processed += 1
-                        if w_processed % 100 == 0:
-                            await draw_status(f"(Skipping cached: {msg_data.message_id})")
-                        continue
+                # 3. Skip already synced messages for this target to ensure accurate "new" count
+                is_new = not self.storage.has_target_link(chat_id, msg_data.message_id, uid)
+                
+                if not is_new and not force_resync:
+                    if w_processed % 100 == 0:
+                        await draw_status(f"(Skipping cached: {msg_data.message_id})")
+                    continue
 
+                if active_deep:
                     # OPTIMIZATION: Stop immediately on signal
                     if self.storage.should_stop(): 
                         break
@@ -347,21 +348,31 @@ class ExportService:
         print(f"\n{CLR_COUNT}✅ Global Export Finished!{CLR_RESET} Total synced: {CLR_COUNT}{total_processed}{CLR_RESET} messages across all dialogs.")
         return total_processed
 
-    async def sync_all_outdated(self, threshold_seconds: int = 86400) -> Set[int]:
+    async def sync_all_outdated(self, threshold_seconds: int = 86400) -> dict:
         """Runs synchronization for all chats that haven't been updated in a while or are incomplete."""
         outdated = self.storage.get_outdated_chats(threshold_seconds=threshold_seconds)
-        updated_uids = set()
+        user_stats = {} # user_id -> {"name": str, "count": int}
         
         if not outdated:
-            return updated_uids
+            return user_stats
 
         print(f"\n🔄 [Updating {len(outdated)} items...]")
         
         for chat_id, from_user_id in outdated:
             entity = await self.client.get_entity(chat_id)
             if entity:
-                await self.sync_chat(entity, from_user_id=from_user_id)
-                updated_uids.add(from_user_id)
+                processed = await self.sync_chat(entity, from_user_id=from_user_id)
+                
+                if from_user_id not in user_stats:
+                    user_info = self.storage.get_user(from_user_id)
+                    name = "Unknown"
+                    if user_info:
+                        first = user_info.get("first_name") or ""
+                        last = user_info.get("last_name") or ""
+                        name = f"{first} {last}".strip() or user_info.get("username") or f"ID:{from_user_id}"
+                    user_stats[from_user_id] = {"name": name, "count": 0}
+                
+                user_stats[from_user_id]["count"] += processed
                 
         telemetry.log_summary()
-        return updated_uids
+        return user_stats

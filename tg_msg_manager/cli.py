@@ -275,7 +275,7 @@ async def run_cli():
     # 3. Commands needing Client + Storage
     client = TelethonClientWrapper(settings.session_name, settings.api_id, settings.api_hash)
     export_service = ExportService(client, storage)
-    cleaner_service = CleanerService(client, storage, whitelist=settings.whitelist_chats)
+    cleaner_service = CleanerService(client, storage, whitelist=settings.whitelist_chats, include_list=settings.include_chats)
     pm_service = PrivateArchiveService(client, storage)
 
     try:
@@ -294,15 +294,16 @@ async def run_cli():
                 )
             
             try:
+                processed = 0
                 if chat_ent:
-                    await export_service.sync_chat(
+                    processed = await export_service.sync_chat(
                         chat_ent, from_user_id=state["active_uid"],
                         deep_mode=args.deep, force_resync=args.force_resync,
                         context_window=args.context_window, max_cluster=args.max_cluster,
                         recursive_depth=args.depth
                     )
                 elif user_ent:
-                    await export_service.sync_all_dialogs_for_user(
+                    processed = await export_service.sync_all_dialogs_for_user(
                         state["active_uid"], target_chat_ids=settings.chats_to_search_user_msgs,
                         deep_mode=args.deep, force_resync=args.force_resync,
                         context_window=args.context_window, max_cluster=args.max_cluster,
@@ -314,12 +315,23 @@ async def run_cli():
                 print(f"\n📂 Finalizing export to filesystem...")
                 path = await db_export_service.export_user_messages(state["active_uid"], as_json=True)
                 if path: print(f"✅ Export successfully saved to: {path}")
+                
+                # Show summary
+                user_info = storage.get_user(state["active_uid"])
+                name = "Unknown"
+                if user_info:
+                    first = user_info.get("first_name") or ""
+                    last = user_info.get("last_name") or ""
+                    name = f"{first} {last}".strip() or user_info.get("username") or f"ID:{state['active_uid']}"
+                
+                print_sync_summary({state["active_uid"]: {"name": name, "count": processed}})
 
             except Exception as e:
                 if not pm.should_stop(): logger.error(f"Error during export: {e}")
 
         elif args.command == "update":
-            await export_service.sync_all_outdated()
+            stats = await export_service.sync_all_outdated()
+            print_sync_summary(stats)
 
         elif args.command == "clean":
             is_dry = True
@@ -348,6 +360,28 @@ def print_submenu_header(title: str, description: str):
     print(description)
     print("-" * 105)
 
+def print_sync_summary(stats: dict):
+    """
+    Prints the final summary of new messages found per user.
+    Stats format: {user_id: {"name": str, "count": int}}
+    """
+    if not stats:
+        return
+    
+    print("\n" + "="*45)
+    print(f" 📊 {_('sync_summary_title')}")
+    print("="*45)
+    
+    CLR_USER = "\033[93m"  # Yellow
+    CLR_COUNT = "\033[92m" # Green
+    CLR_RESET = "\033[0m"
+    
+    for uid, info in stats.items():
+        name = info["name"]
+        count = info["count"]
+        print(f" {CLR_USER}{name}{CLR_RESET} - {CLR_COUNT}{count}{CLR_RESET}")
+    print("="*45)
+
 async def main_menu():
     setup_logging()
     pm = ProcessManager()
@@ -362,7 +396,7 @@ async def main_menu():
     client = TelethonClientWrapper(settings.session_name, settings.api_id, settings.api_hash)
     
     export_service = ExportService(client, storage)
-    cleaner_service = CleanerService(client, storage, whitelist=settings.whitelist_chats)
+    cleaner_service = CleanerService(client, storage, whitelist=settings.whitelist_chats, include_list=settings.include_chats)
     db_export_service = DBExportService(storage)
     pm_service = PrivateArchiveService(client, storage)
     alias_manager = AliasManager()
@@ -447,13 +481,14 @@ async def main_menu():
                 
                 final_uid = user_ent.id if user_ent else resolve_id(target_str)
                 
+                processed = 0
                 try:
                     if chat_ent:
-                        await export_service.sync_chat(chat_ent, from_user_id=final_uid, deep_mode=active_deep, recursive_depth=active_depth)
+                        processed = await export_service.sync_chat(chat_ent, from_user_id=final_uid, deep_mode=active_deep, recursive_depth=active_depth)
                     elif user_ent:
                         if not settings.chats_to_search_user_msgs:
                             print("⚠️ No chats defined in chats_to_search_user_msgs config. Scanning all dialogs...")
-                        await export_service.sync_all_dialogs_for_user(final_uid, target_chat_ids=settings.chats_to_search_user_msgs, deep_mode=active_deep, recursive_depth=active_depth)
+                        processed = await export_service.sync_all_dialogs_for_user(final_uid, target_chat_ids=settings.chats_to_search_user_msgs, deep_mode=active_deep, recursive_depth=active_depth)
                     else:
                         print(f"❌ Error: Could not resolve target {target_str}")
                 finally:
@@ -463,6 +498,16 @@ async def main_menu():
                     
                     if final_uid:
                         await db_export_service.export_user_messages(final_uid, as_json=True, include_date=False)
+                        
+                        # Resolve name for summary
+                        user_info = storage.get_user(final_uid)
+                        target_display_name = "Unknown"
+                        if user_info:
+                            first = user_info.get("first_name") or ""
+                            last = user_info.get("last_name") or ""
+                            target_display_name = f"{first} {last}".strip() or user_info.get("username") or f"ID:{final_uid}"
+                        
+                        print_sync_summary({final_uid: {"name": target_display_name, "count": processed}})
                 
                 sys.stdout.write("\n" + _("press_enter"))
                 sys.stdout.flush()
@@ -475,13 +520,14 @@ async def main_menu():
                     "для всех пользователей, чьи сообщения вы когда-либо выгружали."
                 )
                 await client.connect()
-                updated_uids = await export_service.sync_all_outdated()
+                updated_stats = await export_service.sync_all_outdated()
                 
-                if updated_uids:
-                    print(f"\n💾 Updating JSON files for {len(updated_uids)} targets...")
-                    for uid in updated_uids:
+                if updated_stats:
+                    print(f"\n💾 Updating JSON files for {len(updated_stats)} targets...")
+                    for uid in updated_stats:
                         await db_export_service.export_user_messages(uid, as_json=True, include_date=False)
                     print("✅ All exports updated.")
+                    print_sync_summary(updated_stats)
                 sys.stdout.write("\n" + _("press_enter"))
                 sys.stdout.flush()
                 TerminalInput.get_char()
