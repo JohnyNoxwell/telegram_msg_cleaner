@@ -9,15 +9,6 @@
 
 **TG_MSG_MNGR** — это мощная экосистема для управления вашим цифровым следом в Telegram. Переосмысленная в версии 4.0, утилита превратилась из простого скрипта в полноценное консольное Android-подобное приложение с фокусом на UX, скорость и надежность.
 
-### 💎 Преимущества версии 4.0 (UX Revolution)
-
-* 🎨 **Cyberpunk UI**: Полноцветная 24-битная ANSI градиентная шапка и премиальный дизайн интерфейса.
-* ⚡ **Интерактивность**: Навигация в одно касание и поддержка клавиши **ESC** для оперативной отмены.
-* 📊 **Terminal Feedback**: Реальное время отображения прогресса очистки и экспорта с наглядными счетчиками в консоли.
-* 🏗️ **Модульная архитектура**: Сервисно-ориентированное ядро для максимальной стабильности.
-
-* 📖 **Контекстное обучение**: Каждое подменю снабжено краткой справкой о том, как работает конкретный алгоритм.
-
 ### 🌟 Главные функции
 
 * 🧹 **Глобальная очистка (`clean`)**
@@ -97,15 +88,6 @@
 ## 🇬🇧 English
 
 **TG_MSG_MNGR** is a high-performance ecosystem for managing your digital footprint on Telegram. Reimagined in Version 4.0, the utility has evolved from a simple script into a robust, "app-like" terminal experience focusing on UX, speed, and deterministic data integrity.
-
-### 💎 Version 4.0 Highlights (UX Revolution)
-
-* 🎨 **Cyberpunk UI**: Vibrant 24-bit ANSI gradient banners and a premium interface design.
-* ⚡ **Ultra-Responsive**: Single-key navigation and full **ESC** key support for instant cancellation.
-* 📊 **Live Telemetry**: Real-time progress indicators and message counters for all cleanup and sync operations.
-* 🏗️ **Service-Oriented Core**: Refactored modular architecture ensuring long-term stability and easier auditing.
-
-* 📖 **In-App Guidance**: Every sub-menu features technical descriptions of how the specific engine works.
 
 ### 🌟 Core Features
 
