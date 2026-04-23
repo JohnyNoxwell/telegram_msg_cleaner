@@ -31,11 +31,11 @@
 
 ### 📊 Подробный CLI Reference
 
-Для продвинутых пользователей доступны команды напрямую:
+Для продвинутых пользователей доступны команды напрямую (в примерах ниже используется полный вызов модуля, но если вы настроили алиасы, можно использовать просто `tg` вместо `python3 -m tg_msg_manager.cli`):
 
 *   **Экспорт сообщений (`export`)**
     *   Алиас: `tge --user-id ID`
-    *   Полная команда: `tg export --user-id ID`
+    *   Полная команда: `python3 -m tg_msg_manager.cli export --user-id ID`
     *   Опции:
         *   `--chat-id ID`: Ограничить поиск конкретным чатом.
         *   `--context-window N`: Размер захвата сообщений вокруг цели (по умолчанию 3).
@@ -47,15 +47,15 @@
 *   **Глобальная очистка (`clean`)**
     *   Алиас (Боевой): `tgd`
     *   Алиас (Тест): `tgr`
-    *   Полная команда: `tg clean --apply` (для удаления) или `tg clean` (для теста).
+    *   Полная команда: `python3 -m tg_msg_manager.cli clean --apply` (для удаления) или `python3 -m tg_msg_manager.cli clean` (для теста).
     *   Опция `--yes`: Пропустить подтверждение удаления.
 
 *   **Обновление базы (`update`)**
     *   Алиас: `tgu`
-    *   Полная команда: `tg update`
+    *   Полная команда: `python3 -m tg_msg_manager.cli update`
 
 *   **Экспорт из БД (`db-export`)**
-    *   Команда: `tg db-export --user-id ID`
+    *   Команда: `python3 -m tg_msg_manager.cli db-export --user-id ID`
 
 ---
 
@@ -111,11 +111,11 @@
 
 ### 📊 Detailed CLI Reference
 
-For power users, subcommands can be executed directly:
+For power users, subcommands can be executed directly (if you have installed aliases, you can use `tg` instead of `python3 -m tg_msg_manager.cli`):
 
 *   **Message Export (`export`)**
     *   Alias: `tge --user-id ID`
-    *   Full Command: `tg export --user-id ID`
+    *   Full Command: `python3 -m tg_msg_manager.cli export --user-id ID`
     *   Options:
         *   `--chat-id ID`: Target a specific chat only.
         *   `--context-window N`: Number of neighbor messages to fetch (default: 3).
@@ -127,15 +127,15 @@ For power users, subcommands can be executed directly:
 *   **Global Cleanup (`clean`)**
     *   Alias (Apply): `tgd`
     *   Alias (Dry-run): `tgr`
-    *   Full Command: `tg clean --apply` (to delete) or `tg clean` (to test).
+    *   Full Command: `python3 -m tg_msg_manager.cli clean --apply` (to delete) or `python3 -m tg_msg_manager.cli clean` (to test).
     *   Option `--yes`: Skip the safety confirmation prompt.
 
 *   **Smart Update (`update`)**
     *   Alias: `tgu`
-    *   Full Command: `tg update`
+    *   Full Command: `python3 -m tg_msg_manager.cli update`
 
 *   **Database Export (`db-export`)**
-    *   Command: `tg db-export --user-id ID`
+    *   Command: `python3 -m tg_msg_manager.cli db-export --user-id ID`
 
 ---
 
