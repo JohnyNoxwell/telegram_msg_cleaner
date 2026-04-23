@@ -331,7 +331,8 @@ async def run_cli():
                 if not pm.should_stop(): logger.error(f"Error during export: {e}")
 
         elif args.command == "update":
-            stats = await export_service.sync_all_outdated()
+            # Default threshold is 1 hour (3600s) to fit the 2-hour background cycle
+            stats = await export_service.sync_all_outdated(threshold_seconds=3600)
             print_sync_summary(stats)
 
         elif args.command == "clean":

@@ -286,6 +286,9 @@ class ExportService:
             sys.stdout.write(f"\r   ✅ Export Finished! Total in DB: {db_count} messages.               \n")
             sys.stdout.flush()
         
+        # 5. Mark as synced now
+        self.storage.update_last_sync_at(chat_id, uid)
+        
         return total_processed
 
     async def sync_all_dialogs_for_user(self, from_user_id: int, 

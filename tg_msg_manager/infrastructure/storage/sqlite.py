@@ -430,7 +430,7 @@ class SQLiteStorage(BaseStorage):
     def get_sync_status(self, chat_id: int, user_id: int) -> dict:
         """Returns complex sync status including tail, completion flag and saved settings."""
         row = self._conn.execute("""
-            SELECT last_msg_id, tail_msg_id, is_complete, deep_mode, recursive_depth 
+            SELECT last_msg_id, tail_msg_id, is_complete, deep_mode, recursive_depth, author_name
             FROM sync_targets 
             WHERE user_id = ? AND chat_id = ?
         """, (user_id, chat_id)).fetchone()
@@ -444,9 +444,28 @@ class SQLiteStorage(BaseStorage):
         with self._get_connection() as conn:
             conn.execute("""
                 UPDATE sync_targets 
-                SET tail_msg_id = ?, is_complete = ?
+                SET tail_msg_id = ?, is_complete = ?, last_sync_at = ?
                 WHERE user_id = ? AND chat_id = ?
-            """, (tail_id, 1 if is_complete else 0, user_id, chat_id))
+            """, (tail_id, 1 if is_complete else 0, int(time.time()), user_id, chat_id))
+            conn.commit()
+
+    def update_last_msg_id(self, chat_id: int, user_id: int, last_msg_id: int):
+        """Updates the latest message ID for a target."""
+        with self._get_connection() as conn:
+            conn.execute("""
+                UPDATE sync_targets 
+                SET last_msg_id = MAX(last_msg_id, ?), last_sync_at = ?
+                WHERE user_id = ? AND chat_id = ?
+            """, (last_msg_id, int(time.time()), user_id, chat_id))
+            conn.commit()
+
+    def update_last_sync_at(self, chat_id: int, user_id: int):
+        """Simply marks the target as synced now."""
+        with self._get_connection() as conn:
+            conn.execute("""
+                UPDATE sync_targets SET last_sync_at = ?
+                WHERE user_id = ? AND chat_id = ?
+            """, (int(time.time()), user_id, chat_id))
             conn.commit()
 
     def get_last_target_msg_id(self, chat_id: int, user_id: int) -> int:
@@ -473,11 +492,11 @@ class SQLiteStorage(BaseStorage):
         """Returns list of (chat_id, user_id) that need update (old or incomplete)."""
         cutoff = int(datetime.now().timestamp()) - threshold_seconds
         with self._get_connection() as conn:
-            # 1. Look for incomplete target scans
+            # 1. Look for incomplete target scans or those that haven't been synced recently
             rows = conn.execute("""
                 SELECT chat_id, user_id FROM sync_targets 
-                WHERE is_complete = 0 OR added_at < ?
-            """, (cutoff,)).fetchall()
+                WHERE is_complete = 0 OR last_sync_at < ? OR added_at < ?
+            """, (cutoff, cutoff)).fetchall()
             
             # 2. Also check whole-chat syncs
             chat_rows = conn.execute("""
