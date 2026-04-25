@@ -31,7 +31,7 @@ STRINGS = {
         "menu_3": "Глобальная очистка",
         "menu_3_desc": "Удалить ВАШИ сообщения из ВСЕХ групп (кроме исключений)",
         "menu_4": "Личка + Медиа",
-        "menu_4_desc": "Полный архив приватного чата",
+        "menu_4_desc": "Текстовый архив приватного чата",
         "menu_5": "Удалить данные",
         "menu_5_desc": "Полное удаление скачанных данных пользователя по ID",
         "menu_6": "Расписание",
@@ -52,7 +52,7 @@ STRINGS = {
         "prompt_dry_run": "Режим Dry Run (безопасно)? [Y/n]",
         "prompt_pm_target": "Введите ID цели для архива лички (0 - Назад)",
         "prompt_purge_id": "Введите ID пользователя для ПОЛНОГО удаления (0 - Назад)",
-        "about_text": "TG_MSG_MNGR — профессиональный инструмент для управления данными в Telegram.\n\nКлючевые возможности:\n  1. 📥 Инкрементальный экспорт: Сканирование чатов и выгрузка сообщений цели.\n  2. 🧠 Deep Mode: Рекурсивный поиск контекста (цепочки ответов и соседи).\n  3. 🧨 Глобальная очистка: Массовое удаление ВАШИХ сообщений из всех групп.\n  4. 💬 Личный Архив: Полная выгрузка PM-чатов с сохранением всех медиафайлов.\n  5. 📊 Экспорт из БД: Генерация красивых TXT или JSONL отчетов из локальной базы.\n  6. ⏱️ Автоматизация: Планировщик фоновых задач (launchd/cron).\n\nПостроен на базе Telethon. Использует SQLite с WAL-режимом для максимальной скорости.",
+        "about_text": "TG_MSG_MNGR — профессиональный инструмент для управления данными в Telegram.\n\nКлючевые возможности:\n  1. 📥 Инкрементальный экспорт: Сканирование чатов и выгрузка сообщений цели.\n  2. 🧠 Deep Mode: Рекурсивный поиск контекста (цепочки ответов и соседи).\n  3. 🧨 Глобальная очистка: Массовое удаление ВАШИХ сообщений из всех групп.\n  4. 💬 Личный Архив: Текстовая выгрузка PM-чатов с подготовленной структурой папок под медиа.\n  5. 📊 Экспорт из БД: Генерация красивых TXT или JSONL отчетов из локальной базы.\n  6. ⏱️ Автоматизация: Планировщик фоновых задач (launchd/cron).\n\nПостроен на базе Telethon. Использует SQLite с WAL-режимом для максимальной скорости.",
         "goodbye": "До свидания!",
         "error_locked": "Ошибка: Процесс уже запущен (файл блокировки активен).",
         
@@ -171,7 +171,7 @@ STRINGS = {
         "alias_tgd": "🧨  Боевое удаление сообщений",
         "alias_tge": "📥  Экспорт сообщений из групп (+ user ID)",
         "alias_tgu": "🔄  Обновить все экспорты",
-        "alias_tgpm": "💬  Архив личной переписки с медиа (+ user ID)",
+        "alias_tgpm": "💬  Текстовый архив личной переписки (+ user ID)",
         "alias_tg": "📖  Показать эту справку",
         
         # Scheduler
@@ -235,7 +235,7 @@ STRINGS = {
         "menu_3": "Global Clean",
         "menu_3_desc": "Delete YOUR messages from ALL groups (respecting whitelist)",
         "menu_4": "PM + Media",
-        "menu_4_desc": "Full archive of private chat",
+        "menu_4_desc": "Text archive of private chat",
         "menu_5": "Delete Data",
         "menu_5_desc": "Completely remove downloaded user data by ID",
         "menu_6": "Scheduler",
@@ -256,7 +256,7 @@ STRINGS = {
         "prompt_dry_run": "Dry Run mode (safe)? [Y/n]",
         "prompt_pm_target": "Enter target ID for PM archive (0 - Back)",
         "prompt_purge_id": "Enter user ID for COMPLETE removal (0 - Back)",
-        "about_text": "TG_MSG_MNGR — a professional tool for Telegram data management.\n\nKey Features:\n  1. 📥 Incremental Export: Scan chats and download target user's history.\n  2. 🧠 Deep Mode: Recursive context search (reply chains and neighbors).\n  3. 🧨 Global Cleanup: Mass delete YOUR messages from all groups.\n  4. 💬 Private Archive: Full PM chat backup with media (photos, videos, voices).\n  5. 📊 DB Export: Generate beautiful TXT or structured JSONL reports from local storage.\n  6. ⏱️ Automation: Background task scheduler (launchd/cron) support.\n\nBuilt with Telethon. Uses SQLite with WAL mode for extreme performance.",
+        "about_text": "TG_MSG_MNGR — a professional tool for Telegram data management.\n\nKey Features:\n  1. 📥 Incremental Export: Scan chats and download target user's history.\n  2. 🧠 Deep Mode: Recursive context search (reply chains and neighbors).\n  3. 🧨 Global Cleanup: Mass delete YOUR messages from all groups.\n  4. 💬 Private Archive: Text backup of PM chats with a prepared media folder structure.\n  5. 📊 DB Export: Generate beautiful TXT or structured JSONL reports from local storage.\n  6. ⏱️ Automation: Background task scheduler (launchd/cron) support.\n\nBuilt with Telethon. Uses SQLite with WAL mode for extreme performance.",
         "goodbye": "Goodbye!",
         "error_locked": "Error: Process already running (lock file active).",
         
@@ -375,7 +375,7 @@ STRINGS = {
         "alias_tgd": "🧨  Real deletion of messages",
         "alias_tge": "📥  Export messages from groups (+ user ID)",
         "alias_tgu": "🔄  Update all exports",
-        "alias_tgpm": "💬  Private chat archive with media (+ user ID)",
+        "alias_tgpm": "💬  Private chat text archive (+ user ID)",
         "alias_tg": "📖  Show this help",
         
         # Scheduler
@@ -440,7 +440,7 @@ STRINGS = {
         "help_desc_1": "• Normal: Author messages only.\n• DEEP: Analyzes history and downloads context (replies).",
         "help_desc_2": "Automatic sync for all targets. Remembers last ID and downloads only new data.",
         "help_desc_3": "Delete YOUR messages from groups. Dry-run for testing, Real for deletion.",
-        "help_desc_4": "Full private chat export (both participants + media).",
+        "help_desc_4": "Private chat text archive with prepared media folders.",
         "help_desc_5": "Clear local database and files for a specific user ID.",
         "help_desc_6": "Scheduler: Configure launchd/cron.\nSetup: Install tg/tge/tgu aliases.",
     }

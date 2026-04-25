@@ -35,7 +35,7 @@
 
 * 🧹 **Глобальная очистка (`clean`)** — Удаляет **только ваши** сообщения из всех выбранных чатов. Поддерживает фильтры и безопасный режим (Dry Run).
 * 📥 **Умный экспорт с контекстом (`export`)** — Собирает сообщения цели вместе с окружающим контекстом беседы, восстанавливая полную картину диалога.
-* 💬 **Медиа-архив лички (`export-pm`)** — Полный бэкап приватного чата: текст и все медиафайлы (фото, видео, документы), отсортированные по папкам.
+* 💬 **Архив лички (`export-pm`)** — Текстовый бэкап приватного чата с подготовленной структурой папок под медиа.
 * 🗄️ **SQLite База данных** — Все данные хранятся в структурированной базе `messages.db`. Это обеспечивает мгновенный поиск и отсутствие дубликатов.
 * 📤 **Экспорт из БД** — Выгрузка накопленных данных из SQLite в человекочитаемые форматы (JSON/Text).
 
@@ -96,7 +96,7 @@ All features are available through a premium terminal UI:
 
 * 🧹 **Global Cleanup (`clean`)** — Removes **your own** messages from all selected chats. Supports whitelists and safe Dry Run mode.
 * 📥 **Deep Context Export (`export`)** — Automatically retrieves target messages along with the "surrounding" conversation window.
-* 💬 **Media Archive (`export-pm`)** — Total backup for private conversations: text and all media types, auto-sorted into categorized folders.
+* 💬 **PM Archive (`export-pm`)** — Text backup for private conversations with a prepared folder structure for media.
 * 🗄️ **SQLite Storage** — All messages are stored in a structured `messages.db` for instant querying and zero duplicates.
 * 📤 **Database Export** — Export collected SQLite records into human-readable JSON or Text formats.
 
