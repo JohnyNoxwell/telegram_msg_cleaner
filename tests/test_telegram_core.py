@@ -14,7 +14,7 @@ from tg_msg_manager.core.telegram.client import TelethonClientWrapper
 class TestTelegramCore(unittest.IsolatedAsyncioTestCase):
     async def test_throttler_limits(self):
         # Allow 10 requests per second (0.1 interval)
-        throttler = RateThrottler(max_requests_per_second=10.0)
+        throttler = RateThrottler(max_requests_per_second=10.0, burst=1)
         
         start_time = time.perf_counter()
         # Perform 5 requests

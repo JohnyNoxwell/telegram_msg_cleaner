@@ -10,7 +10,9 @@ class RateThrottler:
     Allows for initial high-speed bursts while maintaining an average rate.
     """
 
-    def __init__(self, rps: float = 3.0, burst: int = 10):
+    def __init__(self, rps: float = 3.0, burst: int = 10, max_requests_per_second: float = None):
+        if max_requests_per_second is not None:
+            rps = max_requests_per_second
         self.rps = rps
         self.capacity = burst
         self.tokens = float(burst)
