@@ -539,11 +539,12 @@ class SQLiteStorage(BaseStorage):
         """Returns total messages for a chat, optionally filtered by target user."""
         with self._get_connection() as conn:
             if target_id:
-                # Count only messages linked to this target via attribution table
+                # Count only links that still point to live message rows.
                 row = conn.execute("""
                     SELECT COUNT(*) as count 
-                    FROM message_target_links 
-                    WHERE chat_id = ? AND target_user_id = ?
+                    FROM message_target_links l
+                    JOIN messages m ON l.chat_id = m.chat_id AND l.message_id = m.message_id
+                    WHERE l.chat_id = ? AND l.target_user_id = ?
                 """, (chat_id, target_id)).fetchone()
             else:
                 # Count all messages in chat
@@ -558,6 +559,10 @@ class SQLiteStorage(BaseStorage):
             return 0
         with self._get_connection() as conn:
             placeholders = ', '.join(['?'] * len(message_ids))
+            conn.execute(
+                f"DELETE FROM message_target_links WHERE chat_id = ? AND message_id IN ({placeholders})",
+                (chat_id, *message_ids)
+            )
             res = conn.execute(
                 f"DELETE FROM messages WHERE chat_id = ? AND message_id IN ({placeholders})",
                 (chat_id, *message_ids)

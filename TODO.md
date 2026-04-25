@@ -96,9 +96,9 @@
 
 ### Priority 2: Reliability And Cleanup
 
-- [ ] Fix CLI `delete` command initialization path.
-- [ ] Remove orphan `message_target_links` during message deletion and keep counts accurate.
-- [ ] Fix `_fetch_parent_replies` retry argument ordering.
+- [x] Fix CLI `delete` command initialization path.
+- [x] Remove orphan `message_target_links` during message deletion and keep counts accurate.
+- [x] Fix `_fetch_parent_replies` retry argument ordering.
 - [ ] Replace process-signal tests with isolated handler tests that do not interrupt the whole suite.
 
 ### Priority 3: Throughput And UX

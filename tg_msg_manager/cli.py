@@ -130,8 +130,9 @@ class CLIContext:
             self.client = TelethonClientWrapper(settings.session_name, settings.api_id, settings.api_hash)
             await self.client.connect()
             self.exporter = ExportService(self.client, self.storage)
-            self.cleaner = CleanerService(self.client, self.storage, whitelist=settings.whitelist_chats, include_list=settings.include_chats)
             self.private_archive = PrivateArchiveService(self.client, self.storage)
+
+        self.cleaner = CleanerService(self.client, self.storage, whitelist=settings.whitelist_chats, include_list=settings.include_chats)
 
     async def shutdown(self):
         if self.client: await self.client.disconnect()
@@ -205,7 +206,7 @@ async def run_cli():
         return
 
     # Special handling for setup/schedule (no client needed)
-    needs_client = args.command not in ("setup", "schedule", "delete", "db-export")
+    needs_client = args.command not in ("setup", "schedule", "db-export")
     ctx = CLIContext(needs_client=needs_client)
     
     try:

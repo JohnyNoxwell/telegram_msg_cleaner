@@ -1,5 +1,5 @@
 import logging
-from typing import List, Set, Any
+from typing import List, Set, Any, Optional
 from ..core.telegram.interface import TelegramClientInterface
 from ..infrastructure.storage.interface import BaseStorage
 from ..utils.ui import UI
@@ -12,11 +12,15 @@ class CleanerService:
     Enforces whitelist protection and dry-run mode.
     """
 
-    def __init__(self, client: TelegramClientInterface, storage: BaseStorage, whitelist: Set[Any] = None, include_list: Set[Any] = None):
+    def __init__(self, client: Optional[TelegramClientInterface], storage: BaseStorage, whitelist: Set[Any] = None, include_list: Set[Any] = None):
         self.client = client
         self.storage = storage
         self.whitelist = whitelist or set()
         self.include_list = include_list or set()
+
+    def _require_client(self):
+        if self.client is None:
+            raise RuntimeError("Telegram client is not initialized for live cleanup operations")
 
     async def delete_chat_messages(self, entity: Any, message_ids: List[int], dry_run: bool = True) -> int:
         """
@@ -42,6 +46,7 @@ class CleanerService:
 
         # 2. Live Deletion from Telegram
         # The client already handles FloodWait and Throttling
+        self._require_client()
         deleted_count = await self.client.delete_messages(entity, message_ids)
         
         if deleted_count > 0:
@@ -86,6 +91,7 @@ class CleanerService:
         mode_str = "DRY RUN" if dry_run else "REAL DELETION"
         target_str = "Groups & PMs" if include_pms else "Groups only"
         logger.info(f"Starting Global Self-Clean ({mode_str}) | Scope: {target_str}...")
+        self._require_client()
         
         dialogs = await self.client.get_dialogs()
         

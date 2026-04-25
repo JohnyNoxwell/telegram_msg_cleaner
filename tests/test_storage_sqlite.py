@@ -144,5 +144,35 @@ class TestSQLiteStorage(unittest.IsolatedAsyncioTestCase):
         ids = self.storage.get_all_message_ids_for_chat(100)
         self.assertEqual(ids, [1])
 
+    async def test_delete_messages_cleans_target_links(self):
+        self.storage.register_target(1, "Target User", 777)
+        msg = MessageData(
+            message_id=1,
+            chat_id=777,
+            user_id=1,
+            author_name="Target User",
+            timestamp=datetime.now(),
+            text="Delete me",
+            media_type=None,
+            reply_to_id=None,
+            fwd_from_id=None,
+            context_group_id=None,
+            raw_payload={}
+        )
+
+        await self.storage.save_message(msg, target_id=1)
+        self.assertEqual(self.storage.get_message_count(777, target_id=1), 1)
+
+        deleted = self.storage.delete_messages(777, [1])
+        self.assertEqual(deleted, 1)
+        self.assertEqual(self.storage.get_message_count(777, target_id=1), 0)
+
+        with self.storage._get_connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS count FROM message_target_links WHERE chat_id = ? AND message_id = ? AND target_user_id = ?",
+                (777, 1, 1)
+            ).fetchone()
+            self.assertEqual(row["count"], 0)
+
     async def asyncTearDown(self):
         await self.storage.close()
