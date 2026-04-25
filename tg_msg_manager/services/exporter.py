@@ -116,6 +116,7 @@ class ExportService:
         batch_size = 200
         context_batch_size = 50
         ranges = []
+        single_worker_limit = limit
         
         # A. ALWAYS check for NEW messages (HEAD)
         if current_max > head_id:
@@ -133,6 +134,15 @@ class ExportService:
                 # Only add if there's actually a range to scan (avoid duplicates with HEAD)
                 if w_offset > 0:
                     ranges.append({"offset": w_offset, "stop": w_stop, "role": "TAIL"})
+
+        # `limit` should cap the whole chat sync, not each parallel worker.
+        # Switch to a single sequential range so the total processed count stays predictable.
+        if limit is not None and ranges:
+            if current_max > head_id:
+                ranges = [{"offset": current_max, "stop": head_id, "role": "HEAD"}]
+            elif not is_complete:
+                h_start = tail_id if tail_id > 0 else (head_id if head_id > 0 else current_max)
+                ranges = [{"offset": h_start, "stop": 0, "role": "TAIL"}]
 
         if not ranges:
             return 0
@@ -159,7 +169,7 @@ class ExportService:
             w_tail_id = offset
             w_head_id = head_id
             
-            async for msg_data in self.client.iter_messages(entity, limit=limit, offset_id=offset, from_user=from_user_id):
+            async for msg_data in self.client.iter_messages(entity, limit=single_worker_limit, offset_id=offset, from_user=from_user_id):
                 if self.storage.should_stop():
                     break
                 # 1. Respect worker boundary

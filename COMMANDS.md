@@ -37,6 +37,7 @@ tg-msg-manager export --user-id <ID> [--chat-id <ID>] [--flat]
 ```
 *   `--flat`: Только сообщения автора, без контекста.
 *   `--force-resync`: Начать заново, игнорируя прогресс в БД.
+*   `--limit`: Ограничить число обрабатываемых сообщений в рамках одного sync чата.
 
 **Примеры**
 ```bash
@@ -107,6 +108,7 @@ tg-msg-manager export --user-id <ID> [--chat-id <ID>] [--flat]
 ```
 *   `--flat`: Fetch only author messages, skipping surrounding context.
 *   `--force-resync`: Restart the sync from the beginning.
+*   `--limit`: Cap the number of processed messages inside a single chat sync.
 
 **Examples**
 ```bash
@@ -140,4 +142,19 @@ tg-msg-manager export-pm --user-id <ID>
 **Example**
 ```bash
 tg-msg-manager export-pm --user-id 8603071440
+```
+
+---
+
+## 🔎 Verification / Проверка
+
+```bash
+python3 -m compileall tg_msg_manager tests
+python3 -m unittest discover -s tests -q
+```
+
+Live smoke-check:
+
+```bash
+python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --flat --limit 1
 ```

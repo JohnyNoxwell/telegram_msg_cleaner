@@ -70,6 +70,26 @@ python3 -m tg_msg_manager.cli update
 *   **Экспорт из БД**:
     `python3 -m tg_msg_manager.cli db-export --user-id 8603071440 --json`
 
+### ✅ Локальная проверка
+
+```bash
+python3 -m compileall tg_msg_manager tests
+python3 -m unittest discover -s tests -q
+```
+
+Минимальный smoke-check с текущей Telegram-сессией:
+
+```bash
+python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --flat --limit 1
+```
+
+### Known Limitations
+
+* `--limit` ограничивает обработку в рамках одного `sync_chat`; при экспорте пользователя по нескольким диалогам лимит применяется к каждому диалогу отдельно.
+* `export-pm` пишет текстовый лог и медиа-структуру, но не восстанавливает Telegram-специфичные сущности как полноценный replay архива.
+* Фоновая запись в SQLite остаётся чувствительной к очень большим deep-export проходам; основная оптимизация сейчас сделана на уровне пакетных сервисных вызовов.
+* Планировщик `schedule` сейчас ориентирован на macOS `launchd`.
+
 <a id="алиасы"></a>
 #### 🚀 Быстрые Алиасы (Power User)
 Выполните `python3 run.py setup`, чтобы создать короткие команды:
@@ -146,6 +166,26 @@ Subcommands can be executed directly for automation:
     `python3 -m tg_msg_manager.cli export-pm --user-id 8603071440`
 *   **DB Export**:
     `python3 -m tg_msg_manager.cli db-export --user-id 8603071440 --json`
+
+### ✅ Local Verification
+
+```bash
+python3 -m compileall tg_msg_manager tests
+python3 -m unittest discover -s tests -q
+```
+
+Minimal live smoke-check with the current Telegram session:
+
+```bash
+python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --flat --limit 1
+```
+
+### Known Limitations
+
+* `--limit` caps work inside a single `sync_chat`; when exporting a user across multiple dialogs, the cap applies per dialog.
+* `export-pm` produces a text-and-media archive, not a full Telegram-native replayable backup.
+* SQLite background writing is still most sensitive during very large deep-export passes; the current optimization focus is batched service-level writes.
+* The built-in `schedule` command currently targets macOS `launchd`.
 
 <a id="aliases"></a>
 #### 🚀 Power User Aliases

@@ -1,7 +1,7 @@
 import os
 import asyncio
 import logging
-from typing import Optional
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ class FileRotateWriter:
             
         self.filename = os.path.basename(base_path)
         self.name_no_ext, self.ext = os.path.splitext(self.filename)
+        self.state_path = os.path.join(self.directory, f".{self.name_no_ext}.writer_state.json")
         
         self.current_part = 1
         self.current_count = 0
@@ -46,6 +47,11 @@ class FileRotateWriter:
                 part += 1
             else:
                 break
+        if os.path.exists(self.state_path):
+            try:
+                os.remove(self.state_path)
+            except Exception as e:
+                logger.error(f"Error removing writer state {self.state_path}: {e}")
 
     def _get_path_for_part(self, part: int) -> str:
         if part == 1:
@@ -55,8 +61,29 @@ class FileRotateWriter:
     def _get_path(self) -> str:
         return self._get_path_for_part(self.current_part)
 
+    def _persist_state(self):
+        state = {
+            "current_part": self.current_part,
+            "current_count": self.current_count,
+        }
+        with open(self.state_path, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+
     def _detect_current_state(self):
         """Finds the highest part number that exists and counts its messages."""
+        if os.path.exists(self.state_path):
+            try:
+                with open(self.state_path, "r", encoding="utf-8") as f:
+                    state = json.load(f)
+                self.current_part = max(1, int(state.get("current_part", 1)))
+                self.current_count = max(0, int(state.get("current_count", 0)))
+                self.current_file_path = self._get_path()
+                if os.path.exists(self.current_file_path):
+                    return
+            except Exception:
+                self.current_part = 1
+                self.current_count = 0
+
         while True:
             path = self._get_path()
             if os.path.exists(path):
@@ -78,6 +105,7 @@ class FileRotateWriter:
             else:
                 break
         self.current_file_path = self._get_path()
+        self._persist_state()
 
     async def write_block(self, content: str, msg_count: int = 1):
         """Writes a block of content to the current file, rotating if needed."""
@@ -92,3 +120,4 @@ class FileRotateWriter:
                 f.write(content)
                 f.flush()
             self.current_count += msg_count
+            self._persist_state()

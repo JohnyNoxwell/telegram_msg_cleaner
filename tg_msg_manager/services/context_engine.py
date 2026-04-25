@@ -43,6 +43,7 @@ class DeepModeEngine:
         
         # 1. Assign clusters to targets and save them
         clusters = {}
+        clustered_targets: List[MessageData] = []
         for msg in target_messages:
             msg_key = self._message_key(msg.chat_id, msg.message_id)
             if msg_key in self._processed_ids:
@@ -50,7 +51,10 @@ class DeepModeEngine:
             self._processed_ids.add(msg_key)
             c_id = msg.context_group_id or str(uuid.uuid4())
             clusters[msg.message_id] = c_id
-            await self.storage.save_message(self._with_cluster(msg, c_id), target_id=target_id)
+            clustered_targets.append(self._with_cluster(msg, c_id))
+
+        if clustered_targets:
+            await self.storage.save_messages(clustered_targets, target_id=target_id)
 
         if on_progress: await on_progress()
 
@@ -172,7 +176,8 @@ class DeepModeEngine:
                             if c_id:
                                 m_clustered = self._with_cluster(m, c_id)
                                 results.append(m_clustered)
-                                await self.storage.save_message(m_clustered, target_id=target_id)
+            if results:
+                await self.storage.save_messages(results, target_id=target_id)
             
             if results and on_progress: await on_progress()
             return results
@@ -205,7 +210,8 @@ class DeepModeEngine:
                         if c_id:
                             m_clustered = self._with_cluster(m, c_id)
                             results.append(m_clustered)
-                            await self.storage.save_message(m_clustered, target_id=target_id)
+        if results:
+            await self.storage.save_messages(results, target_id=target_id)
         return results
 
     def _calculate_ranges(self, ids: List[int], window: int) -> List[tuple]:

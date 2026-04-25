@@ -65,6 +65,21 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
         
         self.assertGreaterEqual(count, 0)
 
+    async def test_export_limit_uses_single_worker_range(self):
+        msg1 = MessageData(message_id=15, chat_id=1, user_id=1, author_name="Exporter User",
+                          timestamp=datetime.now(),
+                          text="New", media_type=None, reply_to_id=None,
+                          fwd_from_id=None, context_group_id=None, raw_payload={})
+
+        self.mock_client.get_messages.return_value = [msg1]
+        self.mock_client.iter_messages.return_value = AsyncIterator([msg1])
+
+        service = ExportService(self.mock_client, self.mock_storage)
+        await service.sync_chat(MagicMock(id=1), limit=1)
+
+        self.assertEqual(self.mock_client.iter_messages.call_count, 1)
+        self.assertEqual(self.mock_client.iter_messages.call_args.kwargs["limit"], 1)
+
     async def test_deep_mode_clustering(self):
         target = MessageData(message_id=100, chat_id=1, user_id=1, author_name="Deep User",
                             timestamp=datetime.now(), 
@@ -84,11 +99,12 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
         
         self.assertEqual(cluster_id, "")
         # Verify storage was called with clustered messages
-        self.mock_storage.save_message.assert_called()
+        self.mock_storage.save_messages.assert_awaited()
 
-        # Check that saved message has the cluster_id
-        saved_msg = self.mock_storage.save_message.call_args[0][0]
-        self.assertTrue(saved_msg.context_group_id)
+        # Check that at least one saved message has the cluster_id
+        saved_batches = [call.args[0] for call in self.mock_storage.save_messages.await_args_list]
+        saved_msgs = [msg for batch in saved_batches for msg in batch]
+        self.assertTrue(any(msg.context_group_id for msg in saved_msgs))
 
     async def test_deep_mode_processed_ids_do_not_leak_between_chats(self):
         self.mock_client.iter_messages.return_value = AsyncIterator([])
@@ -111,7 +127,7 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
         await engine.extract_batch_context(MagicMock(id=1), [target_chat_1], target_id=1, recursive_depth=1)
         await engine.extract_batch_context(MagicMock(id=2), [target_chat_2], target_id=1, recursive_depth=1)
 
-        self.assertEqual(self.mock_storage.save_message.await_count, 2)
+        self.assertEqual(self.mock_storage.save_messages.await_count, 2)
 
     async def test_private_archive_downloads_media(self):
         self.mock_client.iter_messages.return_value = AsyncIterator([

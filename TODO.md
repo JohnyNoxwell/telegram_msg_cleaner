@@ -67,14 +67,14 @@
 - [x] Align README with actual behavior.
 - [x] Align CLI help and aliases with actual behavior.
 - [x] Align i18n strings with actual behavior.
-- [ ] Add known limitations section.
+- [x] Add known limitations section.
 
 ## Phase 8: CI And Quality Gates
 
 - [ ] Add lint/format/test validation commands.
-- [ ] Add a minimal CI workflow.
-- [ ] Exclude cache and transient artifacts from source control hygiene.
-- [ ] Add a repeatable local verification checklist.
+- [x] Add a minimal CI workflow.
+- [x] Exclude cache and transient artifacts from source control hygiene.
+- [x] Add a repeatable local verification checklist.
 
 ## Near-Term Execution Order
 
@@ -103,7 +103,7 @@
 
 ### Priority 3: Throughput And UX
 
-- [ ] Rework forced `flush()` behavior so the background writer can actually batch writes.
-- [ ] Make `--limit` semantics explicit and enforce them consistently across parallel workers.
-- [ ] Restore TXT export rotation resume behavior.
-- [ ] Document known limitations and add a repeatable verification checklist.
+- [x] Rework forced `flush()` behavior so the background writer can actually batch writes.
+- [x] Make `--limit` semantics explicit and enforce them consistently across parallel workers.
+- [x] Restore TXT export rotation resume behavior.
+- [x] Document known limitations and add a repeatable verification checklist.
