@@ -1,6 +1,44 @@
 All notable changes to this project will be documented in this file in both English and Russian.
 Все значимые изменения проекта фиксируются в этом файле на английском и русском языках.
 
+## [4.2.0] - 2026-04-25
+
+### Changed (EN)
+- **SQLite Storage Refactor**: Split the storage layer into schema, write-path, read-path, and sync-state modules while preserving the public `SQLiteStorage` API.
+- **Connection Discipline**: Centralized writes behind a locked shared transaction and moved read queries to dedicated read connections for more predictable SQLite usage.
+- **Deep Mode Write Path**: Batched clustered/context message persistence to reduce write amplification during deep exports.
+- **Export Semantics**: Clarified `--limit` behavior so it caps work inside a single `sync_chat` instead of multiplying across parallel workers.
+- **TXT Rotation Resume**: Added sidecar writer state so text exports resume cleanly across runs without losing part counters.
+- **Project Operations**: Added a minimal GitHub Actions CI workflow, local verification commands, and explicit known limitations in the docs.
+
+### Fixed (EN)
+- Fixed sync target freshness detection so old targets are not re-scanned forever after successful sync.
+- Fixed target checkpoint corruption where context messages could advance another user's `last_msg_id`.
+- Fixed cross-chat Deep Mode collisions by scoping processed message tracking to `(chat_id, message_id)`.
+- Fixed `get_messages` FloodWait retries to preserve `limit`.
+- Fixed PM archive persistence so archived PM messages are attributed to the target and refresh sync timestamps.
+- Fixed CLI `delete` initialization so purge flows work even without a live Telegram client.
+- Fixed orphan `message_target_links` cleanup when deleting messages from storage.
+- Fixed signal handling tests so the full test suite no longer kills itself with a real `SIGINT`.
+
+### Изменения (RU)
+- **Рефактор SQLite Storage**: Хранилище разделено на модули schema, write-path, read-path и sync-state без изменения публичного API `SQLiteStorage`.
+- **Дисциплина соединений**: Все записи централизованы через общий lock и shared transaction, а чтение переведено на отдельные read connections.
+- **Deep Mode Write Path**: Сохранение кластеров и контекста переведено на пакетные записи, чтобы уменьшить write amplification при глубоких экспортах.
+- **Семантика экспорта**: Поведение `--limit` уточнено: теперь ограничение действует в рамках одного `sync_chat`, а не умножается на число параллельных воркеров.
+- **Resume для TXT-ротации**: Добавлено sidecar-состояние writer'а, чтобы текстовый экспорт корректно продолжался между запусками.
+- **Операционная часть проекта**: Добавлены минимальный GitHub Actions CI, команды локальной проверки и раздел с known limitations в документации.
+
+### Исправления (RU)
+- Исправлено определение устаревших целей: старые targets больше не пересканируются бесконечно после успешной синхронизации.
+- Исправлена порча checkpoint'ов, при которой контекстные сообщения могли продвигать `last_msg_id` другого пользователя.
+- Исправлены cross-chat коллизии в Deep Mode: tracking обработанных сообщений теперь использует пару `(chat_id, message_id)`.
+- Исправлены ретраи `get_messages` после FloodWait: теперь сохраняется `limit`.
+- Исправлена запись `export-pm`: сообщения лички теперь корректно атрибутируются цели и обновляют sync timestamp.
+- Исправлена инициализация CLI-команды `delete`, чтобы purge-сценарии работали без live Telegram client.
+- Исправлена очистка orphan `message_target_links` при удалении сообщений из storage.
+- Исправлены signal tests: полный test suite больше не убивает сам себя реальным `SIGINT`.
+
 ## [4.1.0] - 2026-04-21
 
 ### Changed (EN)

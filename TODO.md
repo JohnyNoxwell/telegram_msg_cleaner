@@ -35,9 +35,9 @@
 
 ## Phase 3: SQLite Storage Refactor
 
-- [ ] Split schema, write-path, read-path, and sync-state responsibilities.
-- [ ] Reduce `sqlite.py` complexity without changing external behavior.
-- [ ] Re-check lock discipline and connection usage.
+- [x] Split schema, write-path, read-path, and sync-state responsibilities.
+- [x] Reduce `sqlite.py` complexity without changing external behavior.
+- [x] Re-check lock discipline and connection usage.
 
 ## Phase 4: Test Suite Repair
 
@@ -78,11 +78,8 @@
 
 ## Near-Term Execution Order
 
-1. Replace process-signal tests with isolated handler tests.
-2. Add known limitations section.
-3. Add lint/format/test validation commands.
-4. Add a minimal CI workflow.
-5. Exclude cache and transient artifacts from source control hygiene.
+1. Add lint/format/test validation commands.
+2. Keep `CHANGELOG.md` in sync with every shipped batch.
 
 ## Remediation Backlog
 
