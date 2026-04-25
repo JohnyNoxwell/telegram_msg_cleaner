@@ -20,6 +20,7 @@ class MessageData:
     context_group_id: Optional[str]
     raw_payload: Dict[str, Any]
     is_service: bool = False
+    media_ref: Any = None
 
     def __post_init__(self):
         # Strict type validation

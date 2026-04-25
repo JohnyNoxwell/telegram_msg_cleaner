@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import shutil
 
 from .file_writer import FileRotateWriter
 from ..infrastructure.storage.interface import BaseStorage
@@ -31,6 +32,31 @@ class PrivateArchiveService:
         name = UI.format_name({'first_name': first_name, 'last_name': last_name, 'username': username, 'user_id': user_id})
         safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_')).strip().replace(' ', '_')
         return f"{safe_name}_{user_id}"
+
+    def _media_category(self, media_type: Optional[str]) -> str:
+        if not media_type:
+            return "documents"
+        normalized = media_type.lower()
+        if "photo" in normalized:
+            return "photos"
+        if "video" in normalized:
+            return "videos"
+        if "voice" in normalized or "audio" in normalized:
+            return "voices"
+        return "documents"
+
+    async def _download_media(self, msg_data: MessageData, media_dir: str) -> Optional[str]:
+        media_ref = getattr(msg_data, "media_ref", None)
+        if media_ref is None:
+            return None
+
+        category = self._media_category(msg_data.media_type)
+        target_dir = os.path.join(media_dir, category)
+        os.makedirs(target_dir, exist_ok=True)
+        base_name = f"{msg_data.message_id}"
+        target_path = os.path.join(target_dir, base_name)
+
+        return await self.client.download_media(media_ref, file=target_path)
 
     async def archive_pm(self, user_entity: Any):
         """
@@ -81,6 +107,9 @@ class PrivateArchiveService:
                     # Generic document if not matched
                     stats["Document"] += 1
                 telemetry.track_messages(1)
+                downloaded_path = await self._download_media(msg_data, media_dir)
+                if downloaded_path and UI.is_tty():
+                    print(f"   ↳ saved media: {os.path.basename(downloaded_path)}")
                 
             await writer.write_block(log_entry + "\n\n" + "-"*40 + "\n\n", 1)
             count += 1

@@ -48,3 +48,8 @@ class TelegramClientInterface(ABC):
     async def get_messages(self, entity, message_ids: List[int]) -> List[MessageData]:
         """Fetches multiple messages by their IDs in a single batch."""
         pass
+
+    @abstractmethod
+    async def download_media(self, media: Any, file: Optional[str] = None) -> Optional[str]:
+        """Downloads a media object and returns the resulting file path."""
+        pass

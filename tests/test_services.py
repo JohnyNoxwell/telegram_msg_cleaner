@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tg_msg_manager.core.models.message import MessageData
 from tg_msg_manager.services.exporter import ExportService
 from tg_msg_manager.services.context_engine import DeepModeEngine
+from tg_msg_manager.services.private_archive import PrivateArchiveService
 
 class AsyncIterator:
     def __init__(self, items):
@@ -43,6 +44,7 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
         self.mock_storage.has_target_link.return_value = False
         self.mock_client.get_messages = AsyncMock()
         self.mock_client.get_entity = AsyncMock()
+        self.mock_client.download_media = AsyncMock()
 
     async def test_exporter_sync(self):
         # Mock last_id in storage
@@ -86,6 +88,33 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
         # Check that saved message has the cluster_id
         saved_msg = self.mock_storage.save_message.call_args[0][0]
         self.assertTrue(saved_msg.context_group_id)
+
+    async def test_private_archive_downloads_media(self):
+        self.mock_client.iter_messages.return_value = AsyncIterator([
+            MessageData(
+                message_id=5,
+                chat_id=1,
+                user_id=9,
+                author_name="PM User",
+                timestamp=datetime.now(),
+                text="photo",
+                media_type="Photo",
+                reply_to_id=None,
+                fwd_from_id=None,
+                context_group_id=None,
+                raw_payload={},
+                media_ref=MagicMock()
+            )
+        ])
+        self.mock_client.download_media.return_value = "/tmp/test_media.jpg"
+        self.mock_storage.get_last_msg_id.return_value = 0
+        self.mock_storage.register_target = MagicMock()
+
+        service = PrivateArchiveService(self.mock_client, self.mock_storage, base_dir="/tmp/tg_pm_test")
+        result_dir = await service.archive_pm(MagicMock(id=1, first_name="PM", last_name="User", username="pmuser"))
+
+        self.assertIn("/tmp/tg_pm_test", result_dir)
+        self.mock_client.download_media.assert_awaited()
 
 if __name__ == "__main__":
     unittest.main()

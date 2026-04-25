@@ -88,7 +88,8 @@ class TelethonClientWrapper(TelegramClientInterface):
             fwd_from_id=msg.fwd_from.from_id.user_id if (hasattr(msg, 'fwd_from') and msg.fwd_from and msg.fwd_from.from_id and hasattr(msg.fwd_from.from_id, 'user_id')) else None,
             context_group_id=None,
             raw_payload=msg.to_dict(),
-            is_service=is_service
+            is_service=is_service,
+            media_ref=msg
         )
 
 
@@ -133,3 +134,23 @@ class TelethonClientWrapper(TelegramClientInterface):
             logger.error(f"Error deleting messages: {e}")
             telemetry.track_error()
             return 0
+
+    async def download_media(self, media, file: Optional[str] = None) -> Optional[str]:
+        """Downloads media through Telethon with throttling and flood-wait handling."""
+        if media is None:
+            return None
+
+        await self.throttler.throttle()
+        telemetry.track_request()
+        try:
+            return await self.client.download_media(media, file=file)
+        except FloodWaitError as e:
+            logger.debug(f"FloodWait during download_media: {e.seconds}s. Slowing down rps.")
+            self.throttler.adjust_rate(0.6)
+            telemetry.track_flood_wait(e.seconds)
+            await asyncio.sleep(e.seconds)
+            return await self.download_media(media, file=file)
+        except Exception as e:
+            logger.error(f"Error downloading media: {e}")
+            telemetry.track_error()
+            return None
