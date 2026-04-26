@@ -104,3 +104,29 @@
 - [x] Make `--limit` semantics explicit and enforce them consistently across parallel workers.
 - [x] Restore TXT export rotation resume behavior.
 - [x] Document known limitations and add a repeatable verification checklist.
+
+## Refactoring Program
+
+### Baseline Metrics
+
+- [x] Capture a static maintainability baseline for the current codebase.
+  Current snapshot: `33` Python files, `300` functions, `28` classes, `924` branch nodes.
+  Current hotspots by file complexity: `services/exporter.py` (`706` code LOC, `217` branches), `services/context_engine.py` (`821` code LOC, `160` branches), `cli.py` (`411` code LOC, `116` branches), `services/db_exporter.py` (`426` code LOC, `93` branches).
+  Current hotspots by function complexity: `ExportService.sync_chat()` (`438` lines / `111` branches), `DBExportService.export_user_messages()` (`216` lines / `39` branches), `ExportService.scan_worker()` (`169` lines / `46` branches), `main_menu()` (`156` lines / `53` branches), `ExportService._sync_target_items()` (`148` lines / `56` branches).
+
+### Planned Steps
+
+- [x] Step 1: Decompose `ExportService.sync_chat()` preflight setup and scan-result finalization into focused helpers without changing behavior.
+- [x] Step 2: Extract the nested scan worker / scan-buffer pipeline from `ExportService.sync_chat()` into smaller composable units.
+  Current delta: `sync_chat()` is down to `185` lines / `19` branches, with the extracted scan pipeline now split across `_scan_range()` (`142` / `22`) and `_process_scan_buffer()` (`85` / `12`).
+- [x] Step 3: Split shared head prefetch and target scheduling concerns out of `ExportService._sync_target_items()`.
+  Current delta: `_sync_target_items()` is down to `78` lines / `8` branches, with shared prefetch planning moved to `_prime_shared_head_prefetch_cache()` (`47` / `8`) and per-target scheduling moved to `_plan_tracked_sync_target()` (`49` / `5`).
+- [x] Step 4: Break `DBExportService.export_user_messages()` into source-selection, manifest, and writer-pipeline helpers.
+  Current delta: `export_user_messages()` is down to `86` lines / `3` branches, with source selection in `_load_export_source()` (`23` / `6`), export planning in `_prepare_export_plan()` (`47` / `4`), and file emission in `_write_export_payloads()` (`62` / `13`).
+- [x] Step 5: Break `cli.py` menu / command handlers into smaller command-specific entrypoints.
+  Current delta: `run_cli()` is down to `29` lines / `3` branches and `main_menu()` to `21` / `5`, with CLI dispatch moved into command-specific handlers such as `_handle_export_command()` (`29` / `2`) and interactive routing centralized in `_dispatch_main_menu_choice()` (`22` / `4`).
+- [x] Step 6: Decompose `DeepModeEngine` candidate-fetch and round-expansion logic into smaller focused helpers.
+  Current delta: `_expand_structural_round()` is down to `40` lines / `1` branch, `_fetch_parent_messages()` to `25` / `2`, and `_fetch_candidate_pool()` to `39` / `3`, with the split candidate pipeline now isolated in `_collect_range_candidates()` (`35` / `2`) and `_fetch_live_range_fill()` (`38` / `4`).
+- [x] Step 7: Re-run static metrics and compare hotspot deltas against the baseline.
+  Current snapshot: `33` Python files, `358` functions, `32` classes, `881` branch nodes (`-43` vs baseline `924`).
+  Hotspot delta by branch count: `services/exporter.py` `217 -> 191`, `cli.py` `116 -> 97`, `services/context_engine.py` `160 -> 158`; the main function hotspot moved from `ExportService.sync_chat()` (`111` branches at baseline) to `CleanerService.global_self_cleanup()` (`24` branches), with `sync_chat()` now at `19`.

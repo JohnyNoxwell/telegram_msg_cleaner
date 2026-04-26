@@ -193,6 +193,41 @@ class DeepModeEngine:
             return 0
 
         round_started = perf_counter()
+        saved_count = await self._save_round_parent_messages(
+            entity,
+            chat_id,
+            clusters,
+            anchors_by_cluster,
+            target_id=target_id,
+            max_cluster=max_cluster,
+            on_progress=on_progress,
+        )
+        saved_count += await self._save_round_candidate_messages(
+            entity,
+            chat_id,
+            clusters,
+            anchors_by_cluster,
+            target_id=target_id,
+            window_size=window_size,
+            round_number=round_number,
+            max_cluster=max_cluster,
+            on_progress=on_progress,
+        )
+        telemetry.track_counter(f"deep.round_{round_number}.clusters", len(anchors_by_cluster))
+        telemetry.track_counter(f"deep.round_{round_number}.saved_messages", saved_count)
+        telemetry.track_duration(f"deep.round_{round_number}.total", perf_counter() - round_started)
+        return saved_count
+
+    async def _save_round_parent_messages(
+        self,
+        entity: Any,
+        chat_id: int,
+        clusters: List[_ClusterState],
+        anchors_by_cluster: Dict[str, List[_NormalizedContextMessage]],
+        target_id: Optional[int],
+        max_cluster: int,
+        on_progress: Optional[Any],
+    ) -> int:
         parents = await self._fetch_parent_messages(entity, chat_id, anchors_by_cluster)
         parent_additions = self._associate_parents(
             clusters,
@@ -200,8 +235,20 @@ class DeepModeEngine:
             parents,
             max_cluster=max_cluster,
         )
-        saved_count = await self._flush_new_messages(parent_additions, target_id=target_id, on_progress=on_progress)
+        return await self._flush_new_messages(parent_additions, target_id=target_id, on_progress=on_progress)
 
+    async def _save_round_candidate_messages(
+        self,
+        entity: Any,
+        chat_id: int,
+        clusters: List[_ClusterState],
+        anchors_by_cluster: Dict[str, List[_NormalizedContextMessage]],
+        target_id: Optional[int],
+        window_size: int,
+        round_number: int,
+        max_cluster: int,
+        on_progress: Optional[Any],
+    ) -> int:
         candidate_messages = await self._fetch_candidate_pool(
             entity,
             chat_id,
@@ -219,11 +266,7 @@ class DeepModeEngine:
             round_number=round_number,
             max_cluster=max_cluster,
         )
-        saved_count += await self._flush_new_messages(candidate_additions, target_id=target_id, on_progress=on_progress)
-        telemetry.track_counter(f"deep.round_{round_number}.clusters", len(anchors_by_cluster))
-        telemetry.track_counter(f"deep.round_{round_number}.saved_messages", saved_count)
-        telemetry.track_duration(f"deep.round_{round_number}.total", perf_counter() - round_started)
-        return saved_count
+        return await self._flush_new_messages(candidate_additions, target_id=target_id, on_progress=on_progress)
 
     def _build_anchors_by_cluster(
         self,
@@ -269,58 +312,81 @@ class DeepModeEngine:
         chat_id: int,
         anchors_by_cluster: Dict[str, List[_NormalizedContextMessage]],
     ) -> Dict[int, _NormalizedContextMessage]:
-        needed_parent_ids: Set[int] = set()
-        for anchors in anchors_by_cluster.values():
-            for norm in anchors:
-                if norm.reply_to_id:
-                    key = self._message_key(chat_id, norm.reply_to_id)
-                    if key not in self._processed_ids:
-                        needed_parent_ids.add(norm.reply_to_id)
-
+        needed_parent_ids = self._collect_needed_parent_ids(chat_id, anchors_by_cluster)
         if not needed_parent_ids:
             return {}
 
         started_at = perf_counter()
-        normalized: Dict[int, _NormalizedContextMessage] = {}
-        stored_messages = self._load_stored_messages_by_ids(chat_id, sorted(needed_parent_ids))
-        if stored_messages is None:
-            storage_hits = 0
-            missing_ids: List[int] = []
-            for parent_id in sorted(needed_parent_ids):
-                stored = await asyncio.to_thread(self.storage.get_message, chat_id, parent_id)
-                if stored:
-                    normalized[parent_id] = self._normalize_message(stored)
-                    storage_hits += 1
-                else:
-                    missing_ids.append(parent_id)
-        else:
-            for stored in stored_messages.values():
-                normalized[stored.message_id] = self._normalize_message(stored)
-            storage_hits = len(stored_messages)
-
-            missing_ids = [
-                parent_id
-                for parent_id in sorted(needed_parent_ids)
-                if parent_id not in normalized
-            ]
+        normalized, storage_hits, missing_ids = await self._load_parent_messages_from_storage(
+            chat_id,
+            needed_parent_ids,
+        )
 
         if missing_ids:
-            try:
-                async with self.semaphore:
-                    fetched = await self.client.get_messages(entity, message_ids=missing_ids)
-            except TypeError:
-                async with self.semaphore:
-                    fetched = await self.client.get_messages(entity, missing_ids)
-
-            for msg in fetched:
-                norm = self._normalize_message(msg)
-                normalized[norm.message.message_id] = norm
+            normalized.update(await self._fetch_live_parent_messages(entity, missing_ids))
 
         telemetry.track_counter("deep.parent_lookup.calls", 1)
         telemetry.track_counter("deep.parent_lookup.requested", len(needed_parent_ids))
         telemetry.track_counter("deep.parent_lookup.storage_hits", storage_hits)
         telemetry.track_counter("deep.parent_lookup.live_fetch_ids", len(missing_ids))
         telemetry.track_duration("deep.parent_lookup.total", perf_counter() - started_at)
+        return normalized
+
+    def _collect_needed_parent_ids(
+        self,
+        chat_id: int,
+        anchors_by_cluster: Dict[str, List[_NormalizedContextMessage]],
+    ) -> List[int]:
+        needed_parent_ids: Set[int] = set()
+        for anchors in anchors_by_cluster.values():
+            for norm in anchors:
+                if not norm.reply_to_id:
+                    continue
+                key = self._message_key(chat_id, norm.reply_to_id)
+                if key not in self._processed_ids:
+                    needed_parent_ids.add(norm.reply_to_id)
+        return sorted(needed_parent_ids)
+
+    async def _load_parent_messages_from_storage(
+        self,
+        chat_id: int,
+        parent_ids: List[int],
+    ) -> Tuple[Dict[int, _NormalizedContextMessage], int, List[int]]:
+        normalized: Dict[int, _NormalizedContextMessage] = {}
+        stored_messages = self._load_stored_messages_by_ids(chat_id, parent_ids)
+        if stored_messages is None:
+            storage_hits = 0
+            missing_ids: List[int] = []
+            for parent_id in parent_ids:
+                stored = await asyncio.to_thread(self.storage.get_message, chat_id, parent_id)
+                if stored:
+                    normalized[parent_id] = self._normalize_message(stored)
+                    storage_hits += 1
+                else:
+                    missing_ids.append(parent_id)
+            return normalized, storage_hits, missing_ids
+
+        for stored in stored_messages.values():
+            normalized[stored.message_id] = self._normalize_message(stored)
+        missing_ids = [parent_id for parent_id in parent_ids if parent_id not in normalized]
+        return normalized, len(stored_messages), missing_ids
+
+    async def _fetch_live_parent_messages(
+        self,
+        entity: Any,
+        missing_ids: List[int],
+    ) -> Dict[int, _NormalizedContextMessage]:
+        try:
+            async with self.semaphore:
+                fetched = await self.client.get_messages(entity, message_ids=missing_ids)
+        except TypeError:
+            async with self.semaphore:
+                fetched = await self.client.get_messages(entity, missing_ids)
+
+        normalized: Dict[int, _NormalizedContextMessage] = {}
+        for msg in fetched:
+            norm = self._normalize_message(msg)
+            normalized[norm.message.message_id] = norm
         return normalized
 
     def _associate_parents(
@@ -364,62 +430,20 @@ class DeepModeEngine:
         stored_replies = self._load_stored_replies(chat_id, anchor_ids)
 
         for start_id, end_id in ranges:
-            stored_messages = self._load_stored_range(chat_id, start_id, end_id)
-            for message in stored_messages:
-                norm = self._normalize_message(message)
-                if norm.key in seen:
-                    continue
-                seen.add(norm.key)
-                collected.append(norm)
-
-            stored_ids = {message.message_id for message in stored_messages}
-            range_width = end_id - start_id + 1
-            missing_ids = [
-                message_id
-                for message_id in range(start_id, end_id + 1)
-                if message_id not in stored_ids
-            ]
-            self._track_range_coverage(range_width, len(stored_ids), len(missing_ids))
-
-            live_messages: List[MessageData] = []
-            if not missing_ids:
-                telemetry.track_counter("deep.fetch_range.local_only.calls", 1)
-            elif self._should_selective_live_fill(
-                range_width,
-                len(stored_ids),
-                len(missing_ids),
-                stored_reply_count=len(stored_replies),
-            ):
-                telemetry.track_counter("deep.fetch_range.selective_fill.calls", 1)
-                telemetry.track_counter("deep.fetch_range.selective_fill.ids", len(missing_ids))
-                live_messages = await self._fetch_missing_ids(entity, missing_ids)
-            elif self._should_compact_live_fill(range_width, len(stored_ids), missing_ids):
-                compact_ranges = self._build_missing_subranges(missing_ids)
-                telemetry.track_counter("deep.fetch_range.compact_fill.calls", 1)
-                telemetry.track_counter("deep.fetch_range.compact_fill.ranges", len(compact_ranges))
-                telemetry.track_counter(
-                    "deep.fetch_range.compact_fill.width",
-                    sum((end_id - start_id + 1) for start_id, end_id in compact_ranges),
-                )
-                live_messages = await self._fetch_ranges(entity, compact_ranges)
-            else:
-                telemetry.track_counter("deep.fetch_range.full_scan.calls", 1)
-                telemetry.track_counter("deep.fetch_range.full_scan.width", range_width)
-                live_messages = await self._fetch_range(entity, start_id, end_id)
-
-            for message in live_messages:
-                norm = self._normalize_message(message)
-                if norm.key in seen:
-                    continue
-                seen.add(norm.key)
-                collected.append(norm)
+            self._merge_normalized_candidates(
+                collected,
+                seen,
+                await self._collect_range_candidates(
+                    entity,
+                    chat_id,
+                    start_id,
+                    end_id,
+                    stored_reply_count=len(stored_replies),
+                ),
+            )
 
         for message in stored_replies:
-            norm = self._normalize_message(message)
-            if norm.key in seen:
-                continue
-            seen.add(norm.key)
-            collected.append(norm)
+            self._append_normalized_candidate(collected, seen, self._normalize_message(message))
 
         collected.sort(key=lambda norm: (norm.message.timestamp, norm.message.message_id))
         telemetry.track_counter("deep.candidate_pool.calls", 1)
@@ -427,6 +451,110 @@ class DeepModeEngine:
         telemetry.track_counter("deep.candidate_pool.messages", len(collected))
         telemetry.track_duration("deep.candidate_pool.total", perf_counter() - started_at)
         return collected
+
+    async def _collect_range_candidates(
+        self,
+        entity: Any,
+        chat_id: int,
+        start_id: int,
+        end_id: int,
+        stored_reply_count: int,
+    ) -> List[_NormalizedContextMessage]:
+        stored_messages = self._load_stored_range(chat_id, start_id, end_id)
+        stored_ids = {message.message_id for message in stored_messages}
+        range_width = end_id - start_id + 1
+        missing_ids = [
+            message_id
+            for message_id in range(start_id, end_id + 1)
+            if message_id not in stored_ids
+        ]
+        self._track_range_coverage(range_width, len(stored_ids), len(missing_ids))
+
+        range_seen: Set[MessageKey] = set()
+        collected: List[_NormalizedContextMessage] = []
+        self._merge_message_candidates(collected, range_seen, stored_messages)
+        self._merge_message_candidates(
+            collected,
+            range_seen,
+            await self._fetch_live_range_fill(
+                entity,
+                start_id=start_id,
+                end_id=end_id,
+                range_width=range_width,
+                stored_count=len(stored_ids),
+                missing_ids=missing_ids,
+                stored_reply_count=stored_reply_count,
+            ),
+        )
+        return collected
+
+    async def _fetch_live_range_fill(
+        self,
+        entity: Any,
+        *,
+        start_id: int,
+        end_id: int,
+        range_width: int,
+        stored_count: int,
+        missing_ids: List[int],
+        stored_reply_count: int,
+    ) -> List[MessageData]:
+        if not missing_ids:
+            telemetry.track_counter("deep.fetch_range.local_only.calls", 1)
+            return []
+
+        if self._should_selective_live_fill(
+            range_width,
+            stored_count,
+            len(missing_ids),
+            stored_reply_count=stored_reply_count,
+        ):
+            telemetry.track_counter("deep.fetch_range.selective_fill.calls", 1)
+            telemetry.track_counter("deep.fetch_range.selective_fill.ids", len(missing_ids))
+            return await self._fetch_missing_ids(entity, missing_ids)
+
+        if self._should_compact_live_fill(range_width, stored_count, missing_ids):
+            compact_ranges = self._build_missing_subranges(missing_ids)
+            telemetry.track_counter("deep.fetch_range.compact_fill.calls", 1)
+            telemetry.track_counter("deep.fetch_range.compact_fill.ranges", len(compact_ranges))
+            telemetry.track_counter(
+                "deep.fetch_range.compact_fill.width",
+                sum((compact_end - compact_start + 1) for compact_start, compact_end in compact_ranges),
+            )
+            return await self._fetch_ranges(entity, compact_ranges)
+
+        telemetry.track_counter("deep.fetch_range.full_scan.calls", 1)
+        telemetry.track_counter("deep.fetch_range.full_scan.width", range_width)
+        return await self._fetch_range(entity, start_id, end_id)
+
+    def _merge_message_candidates(
+        self,
+        collected: List[_NormalizedContextMessage],
+        seen: Set[MessageKey],
+        messages: Iterable[MessageData],
+    ) -> None:
+        for message in messages:
+            self._append_normalized_candidate(collected, seen, self._normalize_message(message))
+
+    @staticmethod
+    def _merge_normalized_candidates(
+        collected: List[_NormalizedContextMessage],
+        seen: Set[MessageKey],
+        messages: Iterable[_NormalizedContextMessage],
+    ) -> None:
+        for message in messages:
+            DeepModeEngine._append_normalized_candidate(collected, seen, message)
+
+    @staticmethod
+    def _append_normalized_candidate(
+        collected: List[_NormalizedContextMessage],
+        seen: Set[MessageKey],
+        norm: _NormalizedContextMessage,
+    ) -> None:
+        if norm.key in seen:
+            return
+        seen.add(norm.key)
+        collected.append(norm)
 
     @staticmethod
     def _should_selective_live_fill(
