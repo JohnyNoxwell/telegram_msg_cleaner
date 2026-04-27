@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from time import perf_counter
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 from .file_writer import FileRotateWriter
 from ..infrastructure.storage.interface import BaseStorage
 from ..core.models.message import MessageData
@@ -18,9 +18,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class _DBExportSource:
+    export_summary: Optional[Dict[str, Any]]
     export_rows: Optional[List[Dict[str, Any]]]
+    export_row_iter_factory: Optional[Callable[[], Iterable[Dict[str, Any]]]]
     messages: Optional[List[MessageData]]
-    source_items: List[Any]
+    source_count: int
 
 
 @dataclass
@@ -146,6 +148,19 @@ class DBExportService:
         for row in rows:
             if row.get("user_id") == user_id and row.get("author_name"):
                 return str(row["author_name"]).strip()
+
+        return f"User_{user_id}"
+
+    def _resolve_export_author_name_from_summary(self, user_id: int, summary: Dict[str, Any]) -> str:
+        db_user = self.storage.get_user(user_id)
+        if db_user:
+            formatted = UI.format_name(db_user)
+            if formatted and formatted != "Unknown" and not formatted.startswith("ID:"):
+                return formatted
+
+        author_name = summary.get("target_author_name")
+        if isinstance(author_name, str) and author_name.strip():
+            return author_name.strip()
 
         return f"User_{user_id}"
 
@@ -302,21 +317,44 @@ class DBExportService:
         as_json: bool,
         json_profile: str,
     ) -> Optional[_DBExportSource]:
+        export_summary = None
         export_rows = None
         if as_json and json_profile == "ai":
+            summary_getter = getattr(self.storage, "get_user_export_summary", None)
+            iter_getter = getattr(self.storage, "iter_user_export_rows", None)
+            if callable(summary_getter):
+                export_summary = summary_getter(user_id)
+                if export_summary and callable(iter_getter):
+                    return _DBExportSource(
+                        export_summary=export_summary,
+                        export_rows=None,
+                        export_row_iter_factory=lambda: iter_getter(user_id),
+                        messages=None,
+                        source_count=int(export_summary["message_count"]),
+                    )
+
             getter = getattr(self.storage, "get_user_export_rows", None)
             if callable(getter):
                 export_rows = getter(user_id)
 
         messages = None if export_rows is not None else self.storage.get_user_messages(user_id)
-        source_items = export_rows if export_rows is not None else messages
-        if not source_items:
+        source_count = 0
+        if export_summary:
+            source_count = int(export_summary["message_count"])
+        elif export_rows is not None:
+            source_count = len(export_rows)
+        elif messages is not None:
+            source_count = len(messages)
+
+        if source_count <= 0:
             return None
 
         return _DBExportSource(
+            export_summary=export_summary,
             export_rows=export_rows,
+            export_row_iter_factory=None,
             messages=messages,
-            source_items=source_items,
+            source_count=source_count,
         )
 
     def _prepare_export_plan(
@@ -329,7 +367,21 @@ class DBExportService:
         include_date: bool,
         json_profile: str,
     ) -> _DBExportPlan:
-        if source.export_rows is not None:
+        if source.export_summary is not None:
+            summary = source.export_summary
+            target_author = self._resolve_export_author_name_from_summary(user_id, summary)
+            fingerprint = {
+                "user_id": user_id,
+                "message_count": int(summary["message_count"]),
+                "first_message_id": summary["first_message_id"],
+                "last_message_id": summary["last_message_id"],
+                "first_timestamp": summary["first_timestamp"],
+                "last_timestamp": summary["last_timestamp"],
+                "as_json": as_json,
+                "include_date": include_date,
+                "json_profile": json_profile,
+            }
+        elif source.export_rows is not None:
             target_author = self._resolve_export_author_name_from_rows(user_id, source.export_rows)
             fingerprint = {
                 "user_id": user_id,
@@ -461,6 +513,7 @@ class DBExportService:
         output_path: str,
         as_json: bool,
         json_profile: str,
+        expected_count: int,
     ) -> tuple[FileRotateWriter, int]:
         writer = FileRotateWriter(
             output_path,
@@ -488,10 +541,16 @@ class DBExportService:
             pending_count = 0
 
         count = 0
-        iterable = source.export_rows if source.export_rows is not None else (source.messages or [])
+        iterable = (
+            source.export_row_iter_factory()
+            if source.export_row_iter_factory is not None
+            else source.export_rows
+            if source.export_rows is not None
+            else (source.messages or [])
+        )
         for item in iterable:
             if as_json:
-                if source.export_rows is not None:
+                if source.export_row_iter_factory is not None or source.export_rows is not None:
                     block = self._serialize_ai_row(item)
                 else:
                     block = self.format_message(item, as_json=True, json_profile=json_profile)
@@ -511,7 +570,7 @@ class DBExportService:
 
             count += 1
             if count % 100 == 0:
-                logger.debug(f"Exported {count}/{len(iterable)} messages from DB...")
+                logger.debug(f"Exported {count}/{expected_count} messages from DB...")
 
         await flush_pending()
         await writer.finalize()
@@ -554,7 +613,7 @@ class DBExportService:
             output_dir=output_dir,
             user_id=user_id,
             fingerprint=plan.fingerprint,
-            source_count=len(source.source_items),
+            source_count=source.source_count,
         )
         if unchanged_path:
             return unchanged_path
@@ -570,6 +629,7 @@ class DBExportService:
             output_path=plan.output_path,
             as_json=as_json,
             json_profile=json_profile,
+            expected_count=source.source_count,
         )
         elapsed_seconds = perf_counter() - started_at
         telemetry.track_counter("db_export.users", 1)

@@ -138,6 +138,62 @@ class TestSQLiteStorage(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(author_status["last_msg_id"], 0)
         self.assertEqual(len(self.storage.get_user_messages(999)), 1)
 
+    async def test_user_export_summary_and_iterator_preserve_deterministic_order(self):
+        self.storage.register_target(999, "Target User", 321)
+        ts = datetime.fromtimestamp(1700000000)
+        msgs = [
+            MessageData(
+                message_id=2,
+                chat_id=321,
+                user_id=999,
+                author_name="Target User",
+                timestamp=ts,
+                text="second by id",
+                media_type=None,
+                reply_to_id=None,
+                fwd_from_id=None,
+                context_group_id=None,
+                raw_payload={},
+            ),
+            MessageData(
+                message_id=1,
+                chat_id=321,
+                user_id=999,
+                author_name="Target User",
+                timestamp=ts,
+                text="first by id",
+                media_type=None,
+                reply_to_id=None,
+                fwd_from_id=None,
+                context_group_id=None,
+                raw_payload={},
+            ),
+            MessageData(
+                message_id=3,
+                chat_id=321,
+                user_id=555,
+                author_name="Context User",
+                timestamp=datetime.fromtimestamp(1700000001),
+                text="context",
+                media_type=None,
+                reply_to_id=1,
+                fwd_from_id=None,
+                context_group_id=None,
+                raw_payload={},
+            ),
+        ]
+
+        await self.storage.save_messages(msgs, target_id=999)
+
+        summary = self.storage.get_user_export_summary(999)
+        rows = list(self.storage.iter_user_export_rows(999, chunk_size=2))
+
+        self.assertEqual(summary["message_count"], 3)
+        self.assertEqual(summary["first_message_id"], 1)
+        self.assertEqual(summary["last_message_id"], 3)
+        self.assertEqual(summary["target_author_name"], "Target User")
+        self.assertEqual([row["message_id"] for row in rows], [1, 2, 3])
+
     async def test_register_target_preserves_last_sync_at_on_existing_target(self):
         self.storage.register_target(999, "Target User", 321)
         with self.storage._read_connection() as conn:

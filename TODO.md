@@ -137,3 +137,25 @@
   Current delta: `global_self_cleanup()` is down to `31` lines / `3` branches, with eligibility routing moved to `_dialog_is_cleanup_eligible()` (`9` / `5`), dialog prefiltering to `_eligible_cleanup_dialogs()` (`6` / `1`), and per-dialog work to `_cleanup_dialog()` (`23` / `1`).
 - [x] Refactor `PrivateArchiveService.archive_pm()` into source-fetch, media handling, and export-writing helpers.
   Current delta: `archive_pm()` is down to `37` lines / `1` branch, with stream orchestration moved to `_archive_message_stream()` (`31` / `3`), media handling to `_process_archive_media()` (`20` / `4`), and final UI/reporting to `_emit_archive_complete()` (`27` / `1`).
+
+## Active Refactor Wave
+
+### Block A: Streaming DB Export Path
+
+- [x] A.1 Define a tighter DB export source contract so `DBExportService` can distinguish between materialized messages, row summaries, and iterator factories.
+- [x] A.1.1 Remove assumptions that every export source supports `len()` or full in-memory reuse.
+- [x] A.1.2 Preserve deterministic fingerprinting and unchanged-export skip semantics across both streaming and materialized sources.
+- [x] A.2 Add SQLite read helpers for export summaries and chunked row iteration.
+- [x] A.2.1 Keep row ordering deterministic by `(timestamp, message_id)` in both summary and iterator paths.
+- [x] A.2.2 Avoid forcing the AI JSON export fast path to preload the entire row set into RAM.
+- [x] A.3 Rewire the AI JSON fast path in `DBExportService` to consume rows through iterator factories when the storage backend supports it.
+- [x] A.3.1 Keep a compatibility fallback for backends/tests that still only expose materialized `get_user_export_rows()`.
+- [x] A.4 Add regression coverage for streaming exports, unchanged-export skipping, and legacy fallback behavior.
+  Current delta: AI JSON DB export now prefers `get_user_export_summary()` plus `iter_user_export_rows()` for deterministic streaming writes, `DBExportService` no longer assumes every fast-path source supports `len()`, and legacy materialized-row backends remain supported through the compatibility fallback.
+
+### Queued Blocks
+
+- [ ] Block B: Separate service outcomes from terminal rendering so `services/` stop owning direct UI emission.
+- [ ] Block B.1 Inventory progress/status emitters in `ExportService`, `CleanerService`, and `PrivateArchiveService`.
+- [ ] Block B.2 Introduce lightweight result/event payloads that `cli.py` can render without changing business behavior.
+- [ ] Block C: Split the storage contract into smaller read/write/target-oriented interfaces once current service call sites are stable.
