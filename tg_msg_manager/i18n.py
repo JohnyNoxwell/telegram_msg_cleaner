@@ -37,7 +37,7 @@ STRINGS = {
         "menu_5": "Удалить данные",
         "menu_5_desc": "Полное удаление скачанных данных пользователя по ID",
         "menu_6": "Расписание",
-        "menu_6_desc": "Настройка фоновых задач (launchd/cron)",
+        "menu_6_desc": "Настройка фоновых задач (macOS launchd)",
         "menu_7": "Настройка",
         "menu_7_desc": "Установка быстрых алиасов в терминал",
         "menu_8": "О программе",
@@ -61,7 +61,7 @@ STRINGS = {
         "prompt_dry_run": "Режим Dry Run (безопасно)? [Y/n]",
         "prompt_pm_target": "Введите ID цели для архива лички (0 - Назад)",
         "prompt_purge_id": "Введите ID пользователя для ПОЛНОГО удаления (0 - Назад)",
-        "about_text": "TG_MSG_MNGR — профессиональный инструмент для управления данными в Telegram.\n\nКлючевые возможности:\n  1. 📥 Инкрементальный экспорт: Сканирование чатов и выгрузка сообщений цели.\n  2. 🧠 Deep Mode: Рекурсивный поиск контекста (цепочки ответов и соседи).\n  3. 🧨 Глобальная очистка: Массовое удаление ВАШИХ сообщений из всех групп.\n  4. 💬 Личный Архив: Текстовая выгрузка PM-чатов с подготовленной структурой папок под медиа.\n  5. 📊 Экспорт из БД: Генерация красивых TXT или JSONL отчетов из локальной базы.\n  6. ⏱️ Автоматизация: Планировщик фоновых задач (launchd/cron).\n\nПостроен на базе Telethon. Использует SQLite с WAL-режимом для максимальной скорости.",
+        "about_text": "TG_MSG_MNGR — профессиональный инструмент для управления данными в Telegram.\n\nКлючевые возможности:\n  1. 📥 Инкрементальный экспорт: Сканирование чатов и выгрузка сообщений цели.\n  2. 🧠 Deep Mode: Рекурсивный поиск контекста (цепочки ответов и соседи).\n  3. 🧨 Глобальная очистка: Массовое удаление ВАШИХ сообщений из всех групп.\n  4. 💬 Личный Архив: Текстовая выгрузка PM-чатов с подготовленной структурой папок под медиа.\n  5. 📊 Экспорт из БД: Генерация красивых TXT или JSONL отчетов из локальной базы.\n  6. ⏱️ Автоматизация: Планировщик фоновых задач для macOS launchd.\n\nПостроен на базе Telethon. Использует SQLite с WAL-режимом для максимальной скорости.",
         "goodbye": "До свидания!",
         "error_locked": "Ошибка: Процесс уже запущен (файл блокировки активен).",
         # Общие элементы
@@ -145,8 +145,8 @@ STRINGS = {
         "sched_setup": "Настроить расписание",
         # Подменю Настройка
         "sub_setup_title": "Настройка системы",
-        "sub_setup_info": "Установка быстрых алиасов (tg, tge, tgu) для удобного запуска из терминала.",
-        "setup_aliases": "Установить алиасы (tg, tge, tgu...)",
+        "sub_setup_info": "Установка быстрых алиасов (tg, tgr, tgd, tge, tgu, tgpm) для удобного запуска из терминала.",
+        "setup_aliases": "Установить алиасы (tg, tgr, tgd, tge, tgu, tgpm...)",
         "setup_api": "Настроить Telegram API (ID/Hash)",
         # Подменю Экспорт из БД
         "sub_db_export_title": "Экспорт из базы данных",
@@ -204,7 +204,8 @@ STRINGS = {
         "alias_tge": "📥  Экспорт сообщений из групп (+ user ID)",
         "alias_tgu": "🔄  Обновить все экспорты",
         "alias_tgpm": "💬  Текстовый архив личной переписки (+ user ID)",
-        "alias_tg": "📖  Показать эту справку",
+        "alias_tg": "📖  Запустить главное меню",
+        "help_desc_6": "Scheduler: настройка macOS launchd.\nSetup: установка алиасов tg/tgr/tgd/tge/tgu/tgpm.",
         # Scheduler
         "sched_exclusions_title": "\n=== Настройка исключений ===",
         "sched_exclusions_info": "Вызовы авто-очистки могут обходить важные чаты (Blacklist).",
@@ -267,7 +268,7 @@ STRINGS = {
         "menu_5": "Delete Data",
         "menu_5_desc": "Completely remove downloaded user data by ID",
         "menu_6": "Scheduler",
-        "menu_6_desc": "Setup background tasks (launchd/cron)",
+        "menu_6_desc": "Setup background tasks (macOS launchd)",
         "menu_7": "Settings",
         "menu_7_desc": "Install quick aliases in terminal",
         "menu_8": "About",
@@ -291,7 +292,7 @@ STRINGS = {
         "prompt_dry_run": "Dry Run mode (safe)? [Y/n]",
         "prompt_pm_target": "Enter target ID for PM archive (0 - Back)",
         "prompt_purge_id": "Enter user ID for COMPLETE removal (0 - Back)",
-        "about_text": "TG_MSG_MNGR — a professional tool for Telegram data management.\n\nKey Features:\n  1. 📥 Incremental Export: Scan chats and download target user's history.\n  2. 🧠 Deep Mode: Recursive context search (reply chains and neighbors).\n  3. 🧨 Global Cleanup: Mass delete YOUR messages from all groups.\n  4. 💬 Private Archive: Text backup of PM chats with a prepared media folder structure.\n  5. 📊 DB Export: Generate beautiful TXT or structured JSONL reports from local storage.\n  6. ⏱️ Automation: Background task scheduler (launchd/cron) support.\n\nBuilt with Telethon. Uses SQLite with WAL mode for extreme performance.",
+        "about_text": "TG_MSG_MNGR — a professional tool for Telegram data management.\n\nKey Features:\n  1. 📥 Incremental Export: Scan chats and download target user's history.\n  2. 🧠 Deep Mode: Recursive context search (reply chains and neighbors).\n  3. 🧨 Global Cleanup: Mass delete YOUR messages from all groups.\n  4. 💬 Private Archive: Text backup of PM chats with a prepared media folder structure.\n  5. 📊 DB Export: Generate beautiful TXT or structured JSONL reports from local storage.\n  6. ⏱️ Automation: macOS launchd scheduler support.\n\nBuilt with Telethon. Uses SQLite with WAL mode for extreme performance.",
         "goodbye": "Goodbye!",
         "error_locked": "Error: Process already running (lock file active).",
         # General Elements
@@ -375,8 +376,8 @@ STRINGS = {
         "sched_setup": "Configure schedule",
         # Submenu Settings
         "sub_setup_title": "System Settings",
-        "sub_setup_info": "Install quick aliases (tg, tge, tgu) for easy terminal startup.",
-        "setup_aliases": "Install aliases (tg, tge, tgu...)",
+        "sub_setup_info": "Install quick aliases (tg, tgr, tgd, tge, tgu, tgpm) for easy terminal startup.",
+        "setup_aliases": "Install aliases (tg, tgr, tgd, tge, tgu, tgpm...)",
         "setup_api": "Configure Telegram API (ID/Hash)",
         # Submenu DB Export
         "sub_db_export_title": "Export from Database",
@@ -434,7 +435,7 @@ STRINGS = {
         "alias_tge": "📥  Export messages from groups (+ user ID)",
         "alias_tgu": "🔄  Update all exports",
         "alias_tgpm": "💬  Private chat text archive (+ user ID)",
-        "alias_tg": "📖  Show this help",
+        "alias_tg": "📖  Launch the main menu",
         # Scheduler
         "sched_exclusions_title": "\n=== Configuration Exclusions ===",
         "sched_exclusions_info": "Auto-clean calls can bypass important chats (Blacklist).",
@@ -495,7 +496,7 @@ STRINGS = {
         "help_desc_3": "Delete YOUR messages from groups. Dry-run for testing, Real for deletion.",
         "help_desc_4": "Private chat text archive with prepared media folders.",
         "help_desc_5": "Clear local database and files for a specific user ID.",
-        "help_desc_6": "Scheduler: Configure launchd/cron.\nSetup: Install tg/tge/tgu aliases.",
+        "help_desc_6": "Scheduler: Configure macOS launchd.\nSetup: Install tg/tgr/tgd/tge/tgu/tgpm aliases.",
     },
 }
 

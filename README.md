@@ -12,10 +12,11 @@
 ### Quick Reference
 
 ```bash
-python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --depth 3 --json
-python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --flat
-python3 -m tg_msg_manager.cli export-pm --user-id 8603071440
-python3 -m tg_msg_manager.cli db-export --user-id 8603071440 --json
+python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --depth 3 --json
+python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --flat
+python3 -m tg_msg_manager.cli db-export --user-id 123456789
+python3 -m tg_msg_manager.cli export-pm --user-id 123456789
+python3 -m tg_msg_manager.cli db-export --user-id 123456789 --json
 python3 -m tg_msg_manager.cli update
 ```
 
@@ -29,7 +30,7 @@ python3 -m tg_msg_manager.cli update
    ```
 
 2. **Запуск интерактивного меню**:
-   *   **Способ A (Самый быстрый)**: Из корня папки проекта:
+   *   **Способ A (Самый быстрый)**: Из интерактивного терминала, находясь в корне проекта:
        ```bash
        python3 run.py
        ```
@@ -58,9 +59,10 @@ python3 -m tg_msg_manager.cli update
 > ⚠️ **Примечание**: Прямые команды `python3 -m ...` необходимо запускать из корня проекта.
 
 *   **Экспорт сообщений**: 
-    `python3 -m tg_msg_manager.cli export --user-id 9439859384 --depth 3`
-    `python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --depth 3 --json`
-    `python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --flat`
+    `python3 -m tg_msg_manager.cli export --user-id 123456789 --depth 3`
+    `python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --depth 3 --json`
+    `python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --flat`
+    `--json` собирает итоговый JSONL-файл после синка; без `--json` итоговый файл будет TXT.
     По умолчанию Deep Mode использует `--depth 2`, если глубина явно не указана.
 *   **Очистка (Боевой режим)**: 
     `python3 -m tg_msg_manager.cli clean --apply --yes`
@@ -68,9 +70,17 @@ python3 -m tg_msg_manager.cli update
     `python3 -m tg_msg_manager.cli update`
     После прерванного большого экспорта `update` может некоторое время выглядеть "задумавшимся" до появления построчного прогресса: в этот момент сервис делает shared head prefetch для чата и готовит общий HEAD-срез для нескольких целей.
 *   **Архив лички**:
-    `python3 -m tg_msg_manager.cli export-pm --user-id 8603071440`
+    `python3 -m tg_msg_manager.cli export-pm --user-id 123456789`
 *   **Экспорт из БД**:
-    `python3 -m tg_msg_manager.cli db-export --user-id 8603071440 --json`
+    `python3 -m tg_msg_manager.cli db-export --user-id 123456789`
+    `python3 -m tg_msg_manager.cli db-export --user-id 123456789 --json`
+    Без `--json` команда пишет TXT; с `--json` — компактный AI-friendly JSONL.
+*   **Полное удаление локальных данных**:
+    `python3 -m tg_msg_manager.cli delete --user-id 123456789`
+*   **Планировщик (macOS)**:
+    `python3 -m tg_msg_manager.cli schedule`
+*   **Установка алиасов**:
+    `python3 -m tg_msg_manager.cli setup`
 
 ### ✅ Локальная проверка
 
@@ -85,7 +95,7 @@ make verify
 Минимальный smoke-check с текущей Telegram-сессией:
 
 ```bash
-python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --flat --limit 1
+python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --flat --limit 1
 ```
 
 ### Known Limitations
@@ -101,9 +111,11 @@ python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 -
 #### 🚀 Быстрые Алиасы (Power User)
 Выполните `python3 run.py setup`, чтобы создать короткие команды:
 *   `tg` — Запуск главного меню.
+*   `tgr` — Репетиция очистки в dry-run.
 *   `tgd` — Мгновенная очистка всех ваших сообщений.
 *   `tgu` — Автоматическое обновление всей базы.
 *   `tge ID` — Быстрый экспорт конкретного пользователя.
+*   `tgpm ID` — Быстрый архив лички по user ID.
 
 ---
 ---
@@ -116,10 +128,11 @@ python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 -
 ### Quick Reference
 
 ```bash
-python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --depth 3 --json
-python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --flat
-python3 -m tg_msg_manager.cli export-pm --user-id 8603071440
-python3 -m tg_msg_manager.cli db-export --user-id 8603071440 --json
+python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --depth 3 --json
+python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --flat
+python3 -m tg_msg_manager.cli db-export --user-id 123456789
+python3 -m tg_msg_manager.cli export-pm --user-id 123456789
+python3 -m tg_msg_manager.cli db-export --user-id 123456789 --json
 python3 -m tg_msg_manager.cli update
 ```
 
@@ -133,7 +146,7 @@ python3 -m tg_msg_manager.cli update
    ```
 
 2. **Launch Interactive Menu**:
-   *   **Method A (Fastest)**: From the project root:
+   *   **Method A (Fastest)**: From an interactive terminal in the project root:
        ```bash
        python3 run.py
        ```
@@ -162,9 +175,10 @@ Subcommands can be executed directly for automation:
 > ⚠️ **Note**: Full `python3 -m ...` commands must be executed from the project root.
 
 *   **Message Export**: 
-    `python3 -m tg_msg_manager.cli export --user-id 9439859384 --depth 3`
-    `python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --depth 3 --json`
-    `python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --flat`
+    `python3 -m tg_msg_manager.cli export --user-id 123456789 --depth 3`
+    `python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --depth 3 --json`
+    `python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --flat`
+    `--json` writes a final JSONL snapshot after sync; without `--json`, the final export is TXT.
     Deep Mode defaults to `--depth 2` when no explicit depth is provided.
 *   **Global Cleanup (Apply)**: 
     `python3 -m tg_msg_manager.cli clean --apply --yes`
@@ -172,9 +186,17 @@ Subcommands can be executed directly for automation:
     `python3 -m tg_msg_manager.cli update`
     After a large interrupted export, `update` may appear idle before per-target progress starts; during that phase the service is building a shared head prefetch slice for the chat.
 *   **PM Archive**:
-    `python3 -m tg_msg_manager.cli export-pm --user-id 8603071440`
+    `python3 -m tg_msg_manager.cli export-pm --user-id 123456789`
 *   **DB Export**:
-    `python3 -m tg_msg_manager.cli db-export --user-id 8603071440 --json`
+    `python3 -m tg_msg_manager.cli db-export --user-id 123456789`
+    `python3 -m tg_msg_manager.cli db-export --user-id 123456789 --json`
+    Without `--json`, the command writes TXT; with `--json`, it writes compact AI-friendly JSONL.
+*   **Full Local Purge**:
+    `python3 -m tg_msg_manager.cli delete --user-id 123456789`
+*   **Scheduler (macOS)**:
+    `python3 -m tg_msg_manager.cli schedule`
+*   **Alias Setup**:
+    `python3 -m tg_msg_manager.cli setup`
 
 ### ✅ Local Verification
 
@@ -189,7 +211,7 @@ make verify
 Minimal live smoke-check with the current Telegram session:
 
 ```bash
-python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 --flat --limit 1
+python3 -m tg_msg_manager.cli export --user-id 123456789 --chat-id 987654321 --flat --limit 1
 ```
 
 ### Known Limitations
@@ -205,6 +227,8 @@ python3 -m tg_msg_manager.cli export --user-id 8603071440 --chat-id 1274306614 -
 #### 🚀 Power User Aliases
 Run `python3 run.py setup` to register short commands:
 *   `tg` — Launch the main menu.
+*   `tgr` — Dry-run cleanup rehearsal.
 *   `tgd` — Instantly scan and delete your messages.
 *   `tgu` — Progressively update all tracked targets.
 *   `tge ID` — Quick export for a specific user.
+*   `tgpm ID` — Quick PM archive by user ID.

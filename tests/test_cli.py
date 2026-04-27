@@ -1,6 +1,7 @@
 import sys
 import os
 import unittest
+from argparse import Namespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add project root to sys.path
@@ -150,6 +151,9 @@ class TestCLIContext(unittest.IsolatedAsyncioTestCase):
             await run_cli()
 
         mock_log_summary.assert_called_once_with("Export telemetry summary")
+        self.assertTrue(
+            mock_ctx.db_exporter.export_user_messages.await_args.kwargs["as_json"]
+        )
 
     @patch("tg_msg_manager.cli.telemetry.log_summary")
     @patch("tg_msg_manager.cli.get_safe_user_and_chat")
@@ -192,6 +196,120 @@ class TestCLIContext(unittest.IsolatedAsyncioTestCase):
             mock_ctx.exporter.sync_all_dialogs_for_user.await_args.args[0], 2061894541
         )
         mock_log_summary.assert_called_once_with("Export telemetry summary")
+        self.assertTrue(
+            mock_ctx.db_exporter.export_user_messages.await_args.kwargs["as_json"]
+        )
+
+    @patch("tg_msg_manager.cli.telemetry.log_summary")
+    @patch("tg_msg_manager.cli.get_safe_user_and_chat")
+    @patch("tg_msg_manager.cli.CLIContext")
+    async def test_run_cli_export_without_json_writes_txt_summary(
+        self,
+        mock_ctx_cls,
+        mock_get_safe_user_and_chat,
+        mock_log_summary,
+    ):
+        mock_ctx = MagicMock()
+        mock_ctx.initialize = AsyncMock()
+        mock_ctx.shutdown = AsyncMock()
+        mock_ctx.exporter = MagicMock()
+        mock_ctx.exporter.sync_all_dialogs_for_user = AsyncMock(return_value=3)
+        mock_ctx.db_exporter = MagicMock()
+        mock_ctx.db_exporter.export_user_messages = AsyncMock(
+            return_value="DB_EXPORTS/test.txt"
+        )
+        mock_ctx.storage = MagicMock()
+        mock_ctx.storage.get_user.return_value = None
+        mock_ctx_cls.return_value = mock_ctx
+        mock_get_safe_user_and_chat.return_value = (None, None)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "prog",
+                "export",
+                "--user-id",
+                "123456789",
+            ],
+        ):
+            await run_cli()
+
+        mock_log_summary.assert_called_once_with("Export telemetry summary")
+        self.assertFalse(
+            mock_ctx.db_exporter.export_user_messages.await_args.kwargs["as_json"]
+        )
+
+    @patch("tg_msg_manager.cli.CLIContext")
+    async def test_run_cli_db_export_defaults_to_txt(self, mock_ctx_cls):
+        mock_ctx = MagicMock()
+        mock_ctx.initialize = AsyncMock()
+        mock_ctx.shutdown = AsyncMock()
+        mock_ctx.db_exporter = MagicMock()
+        mock_ctx.db_exporter.export_user_messages = AsyncMock(return_value="x.txt")
+        mock_ctx_cls.return_value = mock_ctx
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "prog",
+                "db-export",
+                "--user-id",
+                "123456789",
+            ],
+        ):
+            await run_cli()
+
+        self.assertFalse(
+            mock_ctx.db_exporter.export_user_messages.await_args.kwargs["as_json"]
+        )
+
+    @patch("tg_msg_manager.cli.CLIContext")
+    async def test_run_cli_db_export_json_flag_writes_json(self, mock_ctx_cls):
+        mock_ctx = MagicMock()
+        mock_ctx.initialize = AsyncMock()
+        mock_ctx.shutdown = AsyncMock()
+        mock_ctx.db_exporter = MagicMock()
+        mock_ctx.db_exporter.export_user_messages = AsyncMock(return_value="x.jsonl")
+        mock_ctx_cls.return_value = mock_ctx
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "prog",
+                "db-export",
+                "--user-id",
+                "123456789",
+                "--json",
+            ],
+        ):
+            await run_cli()
+
+        self.assertTrue(
+            mock_ctx.db_exporter.export_user_messages.await_args.kwargs["as_json"]
+        )
+
+    @patch("tg_msg_manager.cli.main_menu", new_callable=AsyncMock)
+    @patch("tg_msg_manager.cli.build_cli_parser")
+    async def test_run_cli_without_command_in_non_tty_prints_help(
+        self,
+        mock_build_parser,
+        mock_main_menu,
+    ):
+        parser = MagicMock()
+        parser.parse_args.return_value = Namespace(command=None)
+        mock_build_parser.return_value = parser
+
+        with (
+            patch.object(sys.stdin, "isatty", return_value=False),
+            patch.object(sys.stdout, "isatty", return_value=False),
+        ):
+            await run_cli()
+
+        parser.print_help.assert_called_once()
+        mock_main_menu.assert_not_awaited()
 
 
 if __name__ == "__main__":

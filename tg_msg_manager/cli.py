@@ -396,7 +396,7 @@ def get_dirty_target_ids(stats: dict) -> list:
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="TG.MSG.CLEANER CLI", add_help=False)
+    parser = argparse.ArgumentParser(description="TG_MSG_MNGR CLI")
     subparsers = parser.add_subparsers(dest="command")
 
     export_parser = subparsers.add_parser("export")
@@ -411,11 +411,9 @@ def build_cli_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--limit", type=int, default=None)
     export_parser.add_argument("--json", action="store_true")
 
-    update_parser = subparsers.add_parser("update")
-    update_parser.add_argument("--force-resync", action="store_true")
+    subparsers.add_parser("update")
 
     clean_parser = subparsers.add_parser("clean")
-    clean_parser.add_argument("--user-id", default="all")
     clean_parser.add_argument("--dry-run", action="store_true", default=None)
     clean_parser.add_argument("--apply", action="store_true")
     clean_parser.add_argument("--yes", "-y", action="store_true")
@@ -427,7 +425,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     db_parser = subparsers.add_parser("db-export")
     db_parser.add_argument("--user-id", required=True)
-    db_parser.add_argument("--json", action="store_true", default=True)
+    db_parser.add_argument("--json", action="store_true", default=False)
     return parser
 
 
@@ -493,6 +491,7 @@ async def _emit_export_summary(
     *,
     final_uid: Any,
     processed: int,
+    as_json: bool,
     show_finalize_section: bool,
     show_saved_path: bool,
 ) -> None:
@@ -500,7 +499,7 @@ async def _emit_export_summary(
         print(f"\n{UI.section(_('section_finalizing_export'), icon='⬢')}")
 
     path = await ctx.db_exporter.export_user_messages(
-        final_uid, as_json=True, include_date=False
+        final_uid, as_json=as_json, include_date=False
     )
     if show_saved_path and path:
         print(
@@ -642,6 +641,7 @@ async def _handle_export_command(ctx: CLIContext, args: argparse.Namespace) -> N
             ctx,
             final_uid=ctx.active_uid,
             processed=processed,
+            as_json=args.json,
             show_finalize_section=True,
             show_saved_path=True,
         )
@@ -727,6 +727,7 @@ async def _handle_menu_export(ctx: CLIContext) -> None:
                 ctx,
                 final_uid=final_uid,
                 processed=processed,
+                as_json=True,
                 show_finalize_section=False,
                 show_saved_path=False,
             )
@@ -850,9 +851,12 @@ async def _dispatch_main_menu_choice(ctx: CLIContext, choice: str) -> bool:
 async def run_cli():
     """Main CLI entry point with subcommand support."""
     parser = build_cli_parser()
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     if not args.command:
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            parser.print_help()
+            return
         await main_menu()
         return
 

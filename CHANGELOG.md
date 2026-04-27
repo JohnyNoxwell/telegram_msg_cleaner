@@ -1,6 +1,32 @@
 All notable changes to this project will be documented in this file in both English and Russian.
 Все значимые изменения проекта фиксируются в этом файле на английском и русском языках.
 
+## [4.2.5] - 2026-04-27
+
+### Changed (EN)
+- **Docs/CLI Alignment**: Synchronized `README.md`, `COMMANDS.md`, and in-app copy with the current menu layout, alias set, scheduler scope, export format semantics, and neutral sample IDs.
+- **Service Rendering Boundary**: Moved user-facing progress/status rendering for export, cleanup, and PM archive flows behind a lightweight service-event sink so `services/` no longer own direct terminal output.
+- **Storage Contracts**: Split the monolithic storage typing into narrower service-oriented protocols while preserving `SQLiteStorage` as the compatible umbrella backend.
+- **Shared Quality Gates**: Added repo-level `make lint`, `make format-check`, `make test`, and `make verify` workflows backed by `ruff`, and wired CI to the same `make verify` entrypoint.
+
+### Fixed (EN)
+- Fixed CLI `db-export` semantics so `db-export --user-id <ID>` writes TXT again, while `--json` explicitly opts into the compact JSONL export.
+- Fixed CLI `export --json` semantics so the final post-sync export format now matches the flag: plain `export` produces TXT, `export --json` produces JSONL.
+- Fixed no-subcommand CLI usage outside an interactive TTY to print parser help instead of crashing on raw terminal input handling.
+- Removed dead public flags that did not affect runtime behavior (`update --force-resync`, `clean --user-id`) so the documented CLI surface matches the real one.
+
+### Изменения (RU)
+- **Выравнивание docs и CLI**: `README.md`, `COMMANDS.md` и in-app тексты синхронизированы с текущей структурой меню, набором алиасов, реальным scope планировщика, семантикой форматов экспорта и нейтральными sample ID.
+- **Граница рендеринга сервисов**: Пользовательский вывод прогресса/статуса для export, cleanup и PM archive переведён на лёгкий service-event sink, так что слой `services/` больше не рисует терминал напрямую.
+- **Контракты storage**: Монолитная типизация storage разделена на более узкие service-oriented протоколы, при этом `SQLiteStorage` сохранён как совместимый umbrella backend.
+- **Общие quality gates**: Добавлены единые `make lint`, `make format-check`, `make test` и `make verify` на базе `ruff`, а CI переведён на тот же entrypoint `make verify`.
+
+### Исправления (RU)
+- Исправлена семантика CLI `db-export`: `db-export --user-id <ID>` снова пишет TXT, а `--json` теперь явно включает компактный JSONL-экспорт.
+- Исправлена семантика CLI `export --json`: итоговый post-sync export теперь реально зависит от флага — обычный `export` пишет TXT, `export --json` пишет JSONL.
+- Исправлен запуск CLI без subcommand вне интерактивного TTY: теперь выводится parser help, а не происходит падение на raw-input обработке.
+- Убраны мёртвые публичные флаги, не влияющие на runtime (`update --force-resync`, `clean --user-id`), чтобы документированный CLI surface совпадал с реальным.
+
 ## [4.2.4] - 2026-04-26
 
 ### Changed (EN)

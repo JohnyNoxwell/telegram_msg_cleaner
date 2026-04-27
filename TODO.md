@@ -7,8 +7,8 @@
 - Avoid ban-risk behavior: respect FloodWait, keep throttling conservative, do not brute-force retries.
 - Store all live-test outputs in a separate temporary folder so they do not mix with working exports.
 - Current live-test target:
-  - `user_id`: `8603071440`
-  - `chat_id`: `1274306614`
+  - `user_id`: `123456789`
+  - `chat_id`: `987654321`
 
 ## Phase 0: Baseline
 
