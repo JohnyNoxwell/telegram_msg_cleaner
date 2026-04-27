@@ -7,6 +7,13 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tg_msg_manager.core.models.message import MessageData
+from tg_msg_manager.infrastructure.storage.interface import (
+    CleanerStorage,
+    ContextStorage,
+    DBExportStorage,
+    ExportStorage,
+    PrivateArchiveStorage,
+)
 from tg_msg_manager.infrastructure.storage.sqlite import SQLiteStorage
 
 class TestSQLiteStorage(unittest.IsolatedAsyncioTestCase):
@@ -52,6 +59,13 @@ class TestSQLiteStorage(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(retrieved.message_id, 1)
         self.assertEqual(retrieved.text, "Hello SQLite")
         self.assertEqual(retrieved.raw_payload["test"], "data")
+
+    async def test_sqlite_storage_satisfies_service_protocols(self):
+        self.assertIsInstance(self.storage, CleanerStorage)
+        self.assertIsInstance(self.storage, ContextStorage)
+        self.assertIsInstance(self.storage, DBExportStorage)
+        self.assertIsInstance(self.storage, ExportStorage)
+        self.assertIsInstance(self.storage, PrivateArchiveStorage)
 
     async def test_batch_save(self):
         msgs = [

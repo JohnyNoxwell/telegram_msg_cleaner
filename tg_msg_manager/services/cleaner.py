@@ -1,7 +1,7 @@
 import logging
 from typing import List, Set, Any, Optional, Tuple
 from ..core.telegram.interface import TelegramClientInterface
-from ..infrastructure.storage.interface import BaseStorage
+from ..infrastructure.storage.interface import CleanerStorage
 from ..core.service_events import ServiceEventSink, emit_service_event
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class CleanerService:
     def __init__(
         self,
         client: Optional[TelegramClientInterface],
-        storage: BaseStorage,
+        storage: CleanerStorage,
         whitelist: Set[Any] = None,
         include_list: Set[Any] = None,
         event_sink: ServiceEventSink = None,

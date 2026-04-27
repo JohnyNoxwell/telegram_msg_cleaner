@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from ..core.models.message import MessageData
 from ..core.telemetry import telemetry
 from ..core.telegram.interface import TelegramClientInterface
-from ..infrastructure.storage.interface import BaseStorage
+from ..infrastructure.storage.interface import ContextStorage
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class DeepModeEngine:
     def __init__(
         self,
         client: TelegramClientInterface,
-        storage: BaseStorage,
+        storage: ContextStorage,
         max_concurrency: int = 15,
     ):
         self.client = client

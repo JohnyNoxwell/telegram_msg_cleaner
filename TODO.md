@@ -181,4 +181,10 @@
 - [x] Block B.4.2.1 Keep current CLI behavior intact while moving bulk-flow rendering out of the service.
 - [x] Block B.4.2.2 Add regression coverage for bulk export/update event emission.
   Current delta: `CleanerService`, `PrivateArchiveService`, and all currently user-facing `ExportService` flows now emit typed service events through an optional sink; direct terminal rendering for those flows moved into `cli.py`, and coverage asserts both service-side event emission and CLI-side sink wiring.
-- [ ] Block C: Split the storage contract into smaller read/write/target-oriented interfaces once current service call sites are stable.
+- [x] Block C: Split the storage contract into smaller read/write/target-oriented interfaces once current service call sites are stable.
+- [x] Block C.1 Introduce narrow read/write/lifecycle storage protocols alongside the legacy umbrella contract.
+- [x] Block C.1.1 Bring the umbrella `BaseStorage` back in sync with the real SQLite API so it no longer omits sync-control/export helpers.
+- [x] Block C.2 Re-type each service against the smallest storage contract it actually consumes.
+- [x] Block C.2.1 Keep runtime behavior unchanged by using structural typing instead of rewriting `SQLiteStorage`.
+- [x] Block C.3 Add regression coverage that `SQLiteStorage` satisfies the service-specific runtime protocols.
+  Current delta: `interface.py` now exposes focused protocols such as `CleanerStorage`, `ContextStorage`, `DBExportStorage`, `PrivateArchiveStorage`, and `ExportStorage`; service constructors depend on those narrower contracts instead of the monolithic storage type, while `SQLiteStorage` remains a compatible umbrella backend and is verified against the new runtime-checkable protocols.

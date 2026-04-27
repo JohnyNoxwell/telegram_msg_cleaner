@@ -4,7 +4,7 @@ import logging
 from typing import Optional, List, Dict, Any
 
 from .file_writer import FileRotateWriter
-from ..infrastructure.storage.interface import BaseStorage
+from ..infrastructure.storage.interface import PrivateArchiveStorage
 from ..core.telegram.interface import TelegramClientInterface
 from ..core.telemetry import telemetry
 from ..core.models.message import MessageData
@@ -21,7 +21,7 @@ class PrivateArchiveService:
     def __init__(
         self,
         client: TelegramClientInterface,
-        storage: BaseStorage,
+        storage: PrivateArchiveStorage,
         base_dir: str = "PRIVAT_DIALOGS",
         max_file_size: int = 50 * 1024 * 1024,
         event_sink: ServiceEventSink = None,

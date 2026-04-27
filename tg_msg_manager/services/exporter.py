@@ -6,7 +6,7 @@ from time import perf_counter
 from typing import Optional, Any, Set, List, Dict, Awaitable, Callable, AsyncIterator
 from ..core.telegram.interface import TelegramClientInterface
 from ..core.service_events import ServiceEventSink, emit_service_event
-from ..infrastructure.storage.interface import BaseStorage
+from ..infrastructure.storage.interface import ExportStorage
 from ..core.context import set_chat_id
 from ..core.telemetry import telemetry
 from .context_engine import DeepModeEngine
@@ -50,7 +50,7 @@ class ExportService:
     def __init__(
         self,
         client: TelegramClientInterface,
-        storage: BaseStorage,
+        storage: ExportStorage,
         event_sink: ServiceEventSink = None,
     ):
         self.client = client

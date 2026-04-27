@@ -8,7 +8,7 @@ from time import perf_counter
 from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional
 from .file_writer import FileRotateWriter
-from ..infrastructure.storage.interface import BaseStorage
+from ..infrastructure.storage.interface import DBExportStorage
 from ..core.models.message import MessageData
 from ..core.telemetry import telemetry
 from ..utils.ui import UI
@@ -36,7 +36,7 @@ class DBExportService:
     """
     Service responsible for exporting cached messages from the database into files.
     """
-    def __init__(self, storage: BaseStorage):
+    def __init__(self, storage: DBExportStorage):
         self.storage = storage
 
     def _manifest_dir(self, output_dir: str) -> str:
