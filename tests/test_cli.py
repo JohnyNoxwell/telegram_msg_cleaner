@@ -41,6 +41,46 @@ class TestCLIContext(unittest.IsolatedAsyncioTestCase):
             await ctx.shutdown()
             mock_storage.close.assert_awaited_once()
 
+    @patch("tg_msg_manager.cli.setup_logging")
+    @patch("tg_msg_manager.cli.PrivateArchiveService")
+    @patch("tg_msg_manager.cli.DBExportService")
+    @patch("tg_msg_manager.cli.CleanerService")
+    @patch("tg_msg_manager.cli.TelethonClientWrapper")
+    @patch("tg_msg_manager.cli.SQLiteStorage")
+    async def test_initialize_live_context_wires_service_event_sinks(
+        self,
+        mock_storage_cls,
+        mock_client_cls,
+        mock_cleaner_cls,
+        mock_db_exporter_cls,
+        mock_private_archive_cls,
+        mock_setup_logging,
+    ):
+        mock_storage = MagicMock()
+        mock_storage.start = AsyncMock()
+        mock_storage.close = AsyncMock()
+        mock_storage_cls.return_value = mock_storage
+        mock_db_exporter_cls.return_value = MagicMock()
+        mock_cleaner_cls.return_value = MagicMock()
+        mock_private_archive_cls.return_value = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+        mock_client_cls.return_value = mock_client
+
+        with patch("tg_msg_manager.cli.ProcessManager.acquire_lock", return_value=True), \
+             patch("tg_msg_manager.cli.ProcessManager.setup_async_signals"), \
+             patch("tg_msg_manager.cli.ProcessManager.release_lock"):
+            ctx = CLIContext(needs_client=True)
+            await ctx.initialize()
+
+            self.assertTrue(callable(mock_cleaner_cls.call_args.kwargs["event_sink"]))
+            self.assertTrue(callable(mock_private_archive_cls.call_args.kwargs["event_sink"]))
+
+            await ctx.shutdown()
+            mock_client.disconnect.assert_awaited_once()
+
     def test_get_dirty_target_ids_filters_unchanged_users(self):
         stats = {
             1: {"name": "A", "count": 0, "dirty": False},

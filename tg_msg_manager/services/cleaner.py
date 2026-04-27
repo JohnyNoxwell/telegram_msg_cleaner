@@ -2,7 +2,7 @@ import logging
 from typing import List, Set, Any, Optional, Tuple
 from ..core.telegram.interface import TelegramClientInterface
 from ..infrastructure.storage.interface import BaseStorage
-from ..utils.ui import UI
+from ..core.service_events import ServiceEventSink, emit_service_event
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +14,19 @@ class CleanerService:
 
     _CHANNEL_ID_SHIFT = 10**12
 
-    def __init__(self, client: Optional[TelegramClientInterface], storage: BaseStorage, whitelist: Set[Any] = None, include_list: Set[Any] = None):
+    def __init__(
+        self,
+        client: Optional[TelegramClientInterface],
+        storage: BaseStorage,
+        whitelist: Set[Any] = None,
+        include_list: Set[Any] = None,
+        event_sink: ServiceEventSink = None,
+    ):
         self.client = client
         self.storage = storage
         self.whitelist = whitelist or set()
         self.include_list = include_list or set()
+        self.event_sink = event_sink
 
     def _require_client(self):
         if self.client is None:
@@ -27,6 +35,9 @@ class CleanerService:
     @staticmethod
     def _dialog_display_name(dialog: Any) -> str:
         return getattr(dialog, "name", None) or str(getattr(dialog, "id", 0))
+
+    def _emit_event(self, event_name: str, **payload: Any) -> None:
+        emit_service_event(self.event_sink, event_name, **payload)
 
     @classmethod
     def _numeric_chat_id_variants(cls, value: Any) -> Set[int]:
@@ -118,19 +129,26 @@ class CleanerService:
         total: int,
         dry_run: bool,
     ) -> Tuple[int, int]:
-        import sys
-
         name = self._dialog_display_name(dialog)
-        UI.print_status("Cleaning", f"[{index}/{total}] {name}")
+        self._emit_event(
+            "cleaner.dialog_scan_started",
+            index=index,
+            total=total,
+            name=name,
+            chat_id=getattr(dialog, "id", 0),
+        )
         logger.info(f"Scanning chat {dialog.id} ({name}) for your messages...")
 
         my_msg_ids = await self._collect_self_message_ids(dialog.entity)
         if not my_msg_ids:
             return 0, 0
 
-        UI.print_status("Found", len(my_msg_ids), extra=f"messages in {name}")
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+        self._emit_event(
+            "cleaner.dialog_messages_found",
+            name=name,
+            chat_id=getattr(dialog, "id", 0),
+            count=len(my_msg_ids),
+        )
         deleted_count = await self.delete_chat_messages(dialog.entity, my_msg_ids, dry_run=dry_run)
         return len(my_msg_ids), deleted_count
 

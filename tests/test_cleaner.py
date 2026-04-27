@@ -93,12 +93,12 @@ class TestCleaner(unittest.IsolatedAsyncioTestCase):
 
         allowed_dialog = MagicMock(
             id=777,
-            name="Allowed Group",
             entity=allowed_entity,
             is_group=True,
             is_channel=False,
             is_user=False,
         )
+        allowed_dialog.name = "Allowed Group"
         blocked_dialog = MagicMock(
             id=123,
             name="Blocked Group",
@@ -135,6 +135,35 @@ class TestCleaner(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cleaner.delete_chat_messages.await_args.args[1], [11, 12])
         self.assertEqual(self.mock_client.iter_messages.call_count, 1)
         self.assertEqual(self.mock_client.iter_messages.call_args.args[0].id, 777)
+
+    async def test_global_self_cleanup_emits_service_events(self):
+        allowed_entity = MagicMock(id=777, username="allowed_group")
+        allowed_dialog = MagicMock(
+            id=777,
+            entity=allowed_entity,
+            is_group=True,
+            is_channel=False,
+            is_user=False,
+        )
+        allowed_dialog.name = "Allowed Group"
+        own_msg = MagicMock(message_id=11, is_service=False)
+
+        events = []
+        self.mock_client.get_dialogs = AsyncMock(return_value=[allowed_dialog])
+        self.mock_client.iter_messages = MagicMock(return_value=AsyncIterator([own_msg]))
+
+        cleaner = CleanerService(self.mock_client, self.storage, event_sink=events.append)
+        cleaner.delete_chat_messages = AsyncMock(return_value=1)
+
+        deleted = await cleaner.global_self_cleanup(dry_run=False, include_pms=False)
+
+        self.assertEqual(deleted, 1)
+        self.assertEqual([event.name for event in events], [
+            "cleaner.dialog_scan_started",
+            "cleaner.dialog_messages_found",
+        ])
+        self.assertEqual(events[0].payload["name"], "Allowed Group")
+        self.assertEqual(events[1].payload["count"], 1)
 
     async def test_global_self_cleanup_skips_whitelisted_full_telegram_chat_id(self):
         channel_id = 1700453512

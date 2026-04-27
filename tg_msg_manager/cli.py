@@ -58,6 +58,7 @@ class TerminalInput:
 from .core.config import settings
 from .core.logging import setup_logging
 from .core.process import ProcessManager
+from .core.service_events import ServiceEvent
 from .core.telemetry import telemetry
 from .core.telegram.client import TelethonClientWrapper
 from .infrastructure.storage.sqlite import SQLiteStorage
@@ -71,6 +72,68 @@ from .i18n import _, set_lang, get_lang
 from .utils.ui import UI
 
 logger = logging.getLogger(__name__)
+
+
+def _archive_media_summary(stats: dict) -> str:
+    return f"P:{stats['Photo']} V:{stats['Video']} S:{stats['Voice']} D:{stats['Document']}"
+
+
+def _archive_progress_summary(archive_stats: dict) -> str:
+    return f"{_('label_downloaded')}={archive_stats['downloaded']} {_('label_skipped')}={archive_stats['skipped']}"
+
+
+def _render_service_event(event: ServiceEvent) -> None:
+    payload = event.payload
+
+    if event.name == "cleaner.dialog_scan_started":
+        UI.print_status("Cleaning", f"[{payload['index']}/{payload['total']}] {payload['name']}")
+        return
+
+    if event.name == "cleaner.dialog_messages_found":
+        UI.print_status("Found", payload["count"], extra=f"messages in {payload['name']}")
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        return
+
+    if event.name == "private_archive.started":
+        if UI.is_tty():
+            print(f"\n{UI.section(_('section_pm_archive'), icon='◆')}  {UI.paint(payload['target_name'], UI.CLR_USER, bold=True)}  {UI.muted(_('label_id'))} {UI.paint(payload['user_id'], UI.CLR_ID)}")
+            print(f"   {UI.muted(_('label_path'))} {UI.paint(payload['user_dir'], UI.CLR_CHAT)}")
+        return
+
+    if event.name == "private_archive.progress":
+        UI.print_status(
+            "Archiving",
+            payload["count"],
+            extra=f"{_('label_messages')} | {_archive_progress_summary(payload['archive_stats'])} | {_('label_media')}: {_archive_media_summary(payload['stats'])}",
+        )
+        return
+
+    if event.name == "private_archive.media_saved":
+        if UI.is_tty():
+            print(f"   {UI.paint('↳', UI.CLR_MUTED)} {UI.muted(_('label_saved_media'))} {UI.paint(payload['filename'], UI.CLR_STATS)}")
+        return
+
+    if event.name == "private_archive.completed":
+        if not UI.is_tty():
+            return
+        UI.print_status(
+            "Complete",
+            payload["count"],
+            extra=f"{_('label_messages')} | {_archive_progress_summary(payload['archive_stats'])} | {_('label_media')}: {_archive_media_summary(payload['stats'])}",
+        )
+        UI.print_final_summary("sync_summary_title", [{
+            "title": payload["target_name"],
+            "lines": [
+                ("messages", payload["count"]),
+                ("downloaded", payload["archive_stats"]["downloaded"]),
+                ("skipped", payload["archive_stats"]["skipped"]),
+                ("media", sum(payload["stats"].values())),
+            ],
+        }])
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        return
 
 def resolve_id(id_str: str) -> Any:
     """Helper to convert string IDs to int if they look like numbers."""
@@ -132,9 +195,15 @@ class CLIContext:
             self.client = TelethonClientWrapper(settings.session_name, settings.api_id, settings.api_hash)
             await self.client.connect()
             self.exporter = ExportService(self.client, self.storage)
-            self.private_archive = PrivateArchiveService(self.client, self.storage)
+            self.private_archive = PrivateArchiveService(self.client, self.storage, event_sink=_render_service_event)
 
-        self.cleaner = CleanerService(self.client, self.storage, whitelist=settings.whitelist_chats, include_list=settings.include_chats)
+        self.cleaner = CleanerService(
+            self.client,
+            self.storage,
+            whitelist=settings.whitelist_chats,
+            include_list=settings.include_chats,
+            event_sink=_render_service_event,
+        )
 
     async def shutdown(self):
         if self.client: await self.client.disconnect()

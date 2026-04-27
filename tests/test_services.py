@@ -922,5 +922,47 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
         self.mock_client.download_media.assert_not_awaited()
         self.mock_storage.update_last_sync_at.assert_called_once_with(1, 1)
 
+    async def test_private_archive_emits_service_events(self):
+        self.mock_client.iter_messages.return_value = AsyncIterator([
+            MessageData(
+                message_id=5,
+                chat_id=1,
+                user_id=9,
+                author_name="PM User",
+                timestamp=datetime.now(),
+                text="photo",
+                media_type="Photo",
+                reply_to_id=None,
+                fwd_from_id=None,
+                context_group_id=None,
+                raw_payload={},
+                media_ref=MagicMock(),
+            )
+        ])
+        self.mock_client.download_media.return_value = "/tmp/test_media.jpg"
+        self.mock_storage.get_last_msg_id.return_value = 0
+        self.mock_storage.register_target = MagicMock()
+        events = []
+
+        service = PrivateArchiveService(
+            self.mock_client,
+            self.mock_storage,
+            base_dir="/tmp/tg_pm_test",
+            event_sink=events.append,
+        )
+        await service.archive_pm(MagicMock(id=1, first_name="PM", last_name="User", username="pmuser"))
+
+        self.assertEqual(
+            [event.name for event in events],
+            [
+                "private_archive.started",
+                "private_archive.media_saved",
+                "private_archive.completed",
+            ],
+        )
+        self.assertEqual(events[0].payload["user_id"], 1)
+        self.assertEqual(events[1].payload["filename"], "test_media.jpg")
+        self.assertEqual(events[2].payload["count"], 1)
+
 if __name__ == "__main__":
     unittest.main()

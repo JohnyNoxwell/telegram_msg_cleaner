@@ -1,5 +1,4 @@
 import os
-import sys
 import asyncio
 import logging
 from typing import Optional, List, Dict, Any
@@ -9,6 +8,7 @@ from ..infrastructure.storage.interface import BaseStorage
 from ..core.telegram.interface import TelegramClientInterface
 from ..core.telemetry import telemetry
 from ..core.models.message import MessageData
+from ..core.service_events import ServiceEventSink, emit_service_event
 from ..utils.ui import UI
 from ..i18n import _
 
@@ -18,14 +18,23 @@ class PrivateArchiveService:
     """
     Service for exporting private chats (PMs) with full media downloading capability.
     """
-    def __init__(self, client: TelegramClientInterface, storage: BaseStorage, 
-                 base_dir: str = "PRIVAT_DIALOGS",
-                 max_file_size: int = 50 * 1024 * 1024):
+    def __init__(
+        self,
+        client: TelegramClientInterface,
+        storage: BaseStorage,
+        base_dir: str = "PRIVAT_DIALOGS",
+        max_file_size: int = 50 * 1024 * 1024,
+        event_sink: ServiceEventSink = None,
+    ):
         self.client = client
         self.storage = storage
         self.base_dir = base_dir
         self.max_file_size = max_file_size
         self.download_semaphore = asyncio.Semaphore(3)
+        self.event_sink = event_sink
+
+    def _emit_event(self, name: str, **payload: Any) -> None:
+        emit_service_event(self.event_sink, name, **payload)
 
     def _get_user_folder_name(self, user_id: int, first_name: str, last_name: str, username: str) -> str:
         name = UI.format_name({'first_name': first_name, 'last_name': last_name, 'username': username, 'user_id': user_id})
@@ -95,16 +104,21 @@ class PrivateArchiveService:
         return f"{_('label_downloaded')}={archive_stats['downloaded']} {_('label_skipped')}={archive_stats['skipped']}"
 
     def _emit_archive_start(self, *, target_name: str, user_id: int, user_dir: str, last_id: int) -> None:
-        if UI.is_tty():
-            print(f"\n{UI.section(_('section_pm_archive'), icon='◆')}  {UI.paint(target_name, UI.CLR_USER, bold=True)}  {UI.muted(_('label_id'))} {UI.paint(user_id, UI.CLR_ID)}")
-            print(f"   {UI.muted(_('label_path'))} {UI.paint(user_dir, UI.CLR_CHAT)}")
+        self._emit_event(
+            "private_archive.started",
+            target_name=target_name,
+            user_id=user_id,
+            user_dir=user_dir,
+            last_id=last_id,
+        )
         logger.info(f"PM Archive start for {user_id}. Last ID: {last_id}")
 
     def _emit_archive_progress(self, *, count: int, stats: Dict[str, int], archive_stats: Dict[str, int]) -> None:
-        UI.print_status(
-            "Archiving",
-            count,
-            extra=f"{_('label_messages')} | {self._archive_progress_summary(archive_stats)} | {_('label_media')}: {self._media_summary(stats)}",
+        self._emit_event(
+            "private_archive.progress",
+            count=count,
+            stats=dict(stats),
+            archive_stats=dict(archive_stats),
         )
 
     def _emit_archive_complete(
@@ -115,25 +129,13 @@ class PrivateArchiveService:
         stats: Dict[str, int],
         archive_stats: Dict[str, int],
     ) -> None:
-        if not UI.is_tty():
-            return
-
-        UI.print_status(
-            "Complete",
-            count,
-            extra=f"{_('label_messages')} | {self._archive_progress_summary(archive_stats)} | {_('label_media')}: {self._media_summary(stats)}",
+        self._emit_event(
+            "private_archive.completed",
+            target_name=UI.format_name(user_entity),
+            count=count,
+            stats=dict(stats),
+            archive_stats=dict(archive_stats),
         )
-        UI.print_final_summary("sync_summary_title", [{
-            "title": UI.format_name(user_entity),
-            "lines": [
-                ("messages", count),
-                ("downloaded", archive_stats["downloaded"]),
-                ("skipped", archive_stats["skipped"]),
-                ("media", sum(stats.values())),
-            ],
-        }])
-        sys.stdout.write("\n")
-        sys.stdout.flush()
 
     def _track_media_stats(self, stats: Dict[str, int], media_type: Optional[str]) -> None:
         if not media_type:
@@ -157,10 +159,13 @@ class PrivateArchiveService:
         self._track_media_stats(stats, msg_data.media_type)
         telemetry.track_messages(1)
         downloaded_path = await self._download_media(msg_data, media_dir)
-        if downloaded_path and UI.is_tty():
-            print(f"   {UI.paint('↳', UI.CLR_MUTED)} {UI.muted(_('label_saved_media'))} {UI.paint(os.path.basename(downloaded_path), UI.CLR_STATS)}")
         if downloaded_path:
             archive_stats["downloaded"] += 1
+            self._emit_event(
+                "private_archive.media_saved",
+                filename=os.path.basename(downloaded_path),
+                path=downloaded_path,
+            )
         else:
             archive_stats["skipped"] += 1
 
