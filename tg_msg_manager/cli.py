@@ -4,13 +4,23 @@ import sys
 import argparse
 from typing import Optional, Any
 
-from .core.config import settings
 from .core.logging import setup_logging
 from .core.process import ProcessManager
-from .core.service_events import ServiceEvent
+from .core.runtime import AppRuntime, build_app_runtime
 from .core.telemetry import telemetry
 from .core.telegram.client import TelethonClientWrapper
-from .i18n import _, set_lang, get_lang
+from .core.models.sync_report import TrackedSyncRunReport
+from .core.models.setup import SchedulerSetupRequest, SchedulerSetupResult
+from .cli_io import (
+    TerminalInput,
+    pause_for_enter,
+    print_target_list,
+    print_update_summary,
+    render_main_menu,
+    render_service_event,
+)
+from .i18n import _, set_lang, get_lang, use_lang
+from .infrastructure.storage.records import PrimaryTarget
 from .infrastructure.storage.sqlite import SQLiteStorage
 from .services.alias_manager import AliasManager
 from .services.cleaner import CleanerService
@@ -20,231 +30,8 @@ from .services.private_archive import PrivateArchiveService
 from .services.scheduler import setup_scheduler
 from .utils.ui import UI
 
-try:
-    import tty
-    import termios
-except ImportError:
-    tty = None
-    termios = None
-
-
-class TerminalInput:
-    """Helper to read raw input including Escape key on Unix systems."""
-
-    @staticmethod
-    def get_char():
-        if not tty or not termios:
-            return sys.stdin.read(1)
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(sys.stdin.fileno())
-            ch = sys.stdin.read(1)
-        finally:
-            # Use TCSANOW for immediate restoration
-            termios.tcsetattr(fd, termios.TCSANOW, old_settings)
-        return ch
-
-    @staticmethod
-    def prompt_with_esc(prompt: str = "") -> Optional[str]:
-        """Equivalent to input() but returns None if ESC is pressed."""
-        sys.stdout.write(prompt)
-        sys.stdout.flush()
-        input_str = ""
-        while True:
-            char = TerminalInput.get_char()
-            if char == "\x1b":  # ESC
-                sys.stdout.write("\n")
-                return None
-            if char == "\r" or char == "\n":  # Enter
-                sys.stdout.write("\n")
-                return input_str
-            if char == "\x7f" or char == "\x08":  # Backspace
-                if len(input_str) > 0:
-                    input_str = input_str[:-1]
-                    sys.stdout.write("\b \b")
-                    sys.stdout.flush()
-                continue
-            if char.isprintable():  # Regular printable chars
-                input_str += char
-                sys.stdout.write(char)
-                sys.stdout.flush()
-
 
 logger = logging.getLogger(__name__)
-
-
-def _archive_media_summary(stats: dict) -> str:
-    return f"P:{stats['Photo']} V:{stats['Video']} S:{stats['Voice']} D:{stats['Document']}"
-
-
-def _archive_progress_summary(archive_stats: dict) -> str:
-    return f"{_('label_downloaded')}={archive_stats['downloaded']} {_('label_skipped')}={archive_stats['skipped']}"
-
-
-def _render_service_event(event: ServiceEvent) -> None:
-    payload = event.payload
-
-    if event.name == "export.sync_chat_started":
-        if UI.is_tty():
-            colored_title = UI.paint(payload["chat_title"], UI.CLR_CHAT, bold=True)
-            mode_badge = UI.paint(payload["mode_str"], UI.CLR_STATS, bold=True)
-            status_badge = (
-                UI.muted(payload["status_str"]) if payload["status_str"] else ""
-            )
-            header = f"{UI.section(_('section_sync'), icon='◆')}  {colored_title}"
-            if payload["user_label"]:
-                header = f"{header}  {UI.muted(_('label_user'))} {UI.paint(payload['user_label'], UI.CLR_USER, bold=True)}"
-            header = f"{header}  {UI.muted(_('label_mode'))} {mode_badge}"
-            if status_badge:
-                header = f"{header}  {status_badge}"
-            print(f"\n{header}")
-        return
-
-    if event.name == "export.sync_progress":
-        suffix = f"💬 {payload['db_total']}"
-        if payload["extra"]:
-            suffix = f"{suffix} {payload['extra']}"
-        UI.print_status("Syncing", "", extra=suffix)
-        return
-
-    if event.name == "export.sync_finished":
-        if UI.is_tty():
-            UI.print_status("Finished", "", extra=f"💬 {payload['db_count']}")
-            sys.stdout.write("\n")
-            sys.stdout.flush()
-        return
-
-    if event.name == "export.sync_summary":
-        if UI.is_tty():
-            UI.print_final_summary(
-                "sync_summary_title",
-                [
-                    {
-                        "title": payload["title"],
-                        "lines": [
-                            ("user_messages", payload["own_messages"]),
-                            ("with_context", payload["with_context"]),
-                        ],
-                    }
-                ],
-            )
-        return
-
-    if event.name == "export.history_fully_synced":
-        if sys.stdout.isatty():
-            print(
-                f"\n{UI.paint('✓', UI.CLR_SUCCESS, bold=True)} {UI.paint(_('text_history_fully_synced'), UI.CLR_SUCCESS)}"
-            )
-        return
-
-    if event.name == "export.targeted_dialog_search_started":
-        if sys.stdout.isatty():
-            print(
-                f"\n{UI.section(_('section_targeted_search'), icon='◆')}  {UI.key_value(_('label_user'), payload['from_user_id'], icon='◌')}  {UI.key_value(_('label_dialogs'), payload['dialog_count'], icon='◌')}"
-            )
-        return
-
-    if event.name == "export.dialog_search_started":
-        if sys.stdout.isatty():
-            print(
-                f"\n{UI.section(_('section_dialog_search'), icon='◆')}  {UI.key_value(_('label_user'), payload['from_user_id'], icon='◌')}"
-            )
-        return
-
-    if event.name == "export.dialog_search_scanning":
-        if sys.stdout.isatty():
-            print(
-                f"   {UI.muted(_('label_scanning'))} {UI.paint(payload['dialog_count'], UI.CLR_STATS, bold=True)} {UI.muted(_('label_dialogs'))}"
-            )
-        return
-
-    if event.name == "export.dialog_scan_started":
-        if UI.is_tty():
-            progress_label = f"{payload['index']}/{payload['total']}"
-            print(
-                f"\n   {UI.paint(progress_label, UI.CLR_MUTED)}  {UI.paint(payload['dialog_title'], UI.CLR_CHAT, bold=True)}"
-            )
-        return
-
-    if event.name == "export.global_export_finished":
-        if UI.is_tty():
-            print(
-                f"\n{UI.paint('✓', UI.CLR_SUCCESS, bold=True)} {UI.paint(_('text_global_export_finished'), UI.CLR_SUCCESS)}  {UI.key_value(_('label_processed'), payload['total_processed'], icon='✉')}"
-            )
-        return
-
-    if event.name == "export.tracked_update_started":
-        if UI.is_tty():
-            print(
-                f"\n{UI.section(_('section_update'), icon='◆')}  {UI.key_value(_('label_targets'), payload['target_count'], icon='◌')}"
-            )
-        return
-
-    if event.name == "cleaner.dialog_scan_started":
-        UI.print_status(
-            "Cleaning", f"[{payload['index']}/{payload['total']}] {payload['name']}"
-        )
-        return
-
-    if event.name == "cleaner.dialog_messages_found":
-        UI.print_status(
-            "Found", payload["count"], extra=f"messages in {payload['name']}"
-        )
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-        return
-
-    if event.name == "private_archive.started":
-        if UI.is_tty():
-            print(
-                f"\n{UI.section(_('section_pm_archive'), icon='◆')}  {UI.paint(payload['target_name'], UI.CLR_USER, bold=True)}  {UI.muted(_('label_id'))} {UI.paint(payload['user_id'], UI.CLR_ID)}"
-            )
-            print(
-                f"   {UI.muted(_('label_path'))} {UI.paint(payload['user_dir'], UI.CLR_CHAT)}"
-            )
-        return
-
-    if event.name == "private_archive.progress":
-        UI.print_status(
-            "Archiving",
-            payload["count"],
-            extra=f"{_('label_messages')} | {_archive_progress_summary(payload['archive_stats'])} | {_('label_media')}: {_archive_media_summary(payload['stats'])}",
-        )
-        return
-
-    if event.name == "private_archive.media_saved":
-        if UI.is_tty():
-            print(
-                f"   {UI.paint('↳', UI.CLR_MUTED)} {UI.muted(_('label_saved_media'))} {UI.paint(payload['filename'], UI.CLR_STATS)}"
-            )
-        return
-
-    if event.name == "private_archive.completed":
-        if not UI.is_tty():
-            return
-        UI.print_status(
-            "Complete",
-            payload["count"],
-            extra=f"{_('label_messages')} | {_archive_progress_summary(payload['archive_stats'])} | {_('label_media')}: {_archive_media_summary(payload['stats'])}",
-        )
-        UI.print_final_summary(
-            "sync_summary_title",
-            [
-                {
-                    "title": payload["target_name"],
-                    "lines": [
-                        ("messages", payload["count"]),
-                        ("downloaded", payload["archive_stats"]["downloaded"]),
-                        ("skipped", payload["archive_stats"]["skipped"]),
-                        ("media", sum(payload["stats"].values())),
-                    ],
-                }
-            ],
-        )
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-        return
 
 
 def resolve_id(id_str: str) -> Any:
@@ -286,8 +73,11 @@ class CLIContext:
     Ensures single initialization of services and graceful shutdown.
     """
 
-    def __init__(self, needs_client: bool = True):
-        self.pm = ProcessManager()
+    def __init__(self, runtime: AppRuntime, needs_client: bool = True):
+        self.runtime = runtime
+        self.settings = runtime.settings
+        self.paths = runtime.paths
+        self.pm = ProcessManager(lock_path=self.paths.lock_path)
         self.storage: Optional[SQLiteStorage] = None
         self.client: Optional[TelethonClientWrapper] = None
         self.needs_client = needs_client
@@ -297,7 +87,10 @@ class CLIContext:
         self.cleaner: Optional[CleanerService] = None
         self.db_exporter: Optional[DBExportService] = None
         self.private_archive: Optional[PrivateArchiveService] = None
-        self.alias_manager = AliasManager()
+        self.alias_manager = AliasManager(
+            project_root=self.paths.project_root,
+            python_executable=self.runtime.python_executable,
+        )
 
         self.active_uid = None
 
@@ -311,29 +104,39 @@ class CLIContext:
         # Setup async signals early
         self.pm.setup_async_signals(asyncio.get_running_loop(), self.emergency_callback)
 
-        self.storage = SQLiteStorage(settings.db_path, process_manager=self.pm)
+        self.storage = SQLiteStorage(self.paths.db_path, process_manager=self.pm)
         await self.storage.start()
 
-        self.db_exporter = DBExportService(self.storage)
+        self.db_exporter = DBExportService(
+            self.storage,
+            default_output_dir=self.paths.db_exports_dir,
+        )
 
         if self.needs_client:
             self.client = TelethonClientWrapper(
-                settings.session_name, settings.api_id, settings.api_hash
+                self.settings.session_name,
+                self.settings.api_id,
+                self.settings.api_hash,
+                max_rps=self.settings.max_rps,
             )
             await self.client.connect()
             self.exporter = ExportService(
-                self.client, self.storage, event_sink=_render_service_event
+                self.client, self.storage, event_sink=render_service_event
             )
             self.private_archive = PrivateArchiveService(
-                self.client, self.storage, event_sink=_render_service_event
+                self.client,
+                self.storage,
+                base_dir=self.paths.private_dialogs_dir,
+                event_sink=render_service_event,
             )
 
         self.cleaner = CleanerService(
             self.client,
             self.storage,
-            whitelist=settings.whitelist_chats,
-            include_list=settings.include_chats,
-            event_sink=_render_service_event,
+            whitelist=self.settings.whitelist_chats,
+            include_list=self.settings.include_chats,
+            artifact_roots=self.paths.artifact_roots(),
+            event_sink=render_service_event,
         )
 
     async def shutdown(self):
@@ -360,39 +163,13 @@ class CLIContext:
             sys.stdout.flush()
 
 
-def print_target_list(targets: list):
-    """Prints a formatted, color-coded list of primary targets."""
-    for i, u in enumerate(targets):
-        display_name = UI.paint(u["author_name"], UI.CLR_USER, bold=True)
-        user_id_str = UI.paint(u["user_id"], UI.CLR_ID)
-        chat_info = (
-            f"  {UI.paint('•', UI.CLR_BORDER)}  {UI.paint(u['chat_title'], UI.CLR_CHAT)}"
-            if u.get("chat_title")
-            else ""
-        )
-        own_count = UI.key_value(_("label_msg_short"), u["user_msg_count"], icon="✉")
-        context_count = UI.key_value(
-            _("label_ctx_short"), u["context_msg_count"], icon="◌"
-        )
-        is_complete = bool(u.get("is_complete", 0))
-        status_color = UI.CLR_SUCCESS if is_complete else UI.CLR_WARN
-        status_label = _("status_complete") if is_complete else _("status_incomplete")
-        status = UI.paint(status_label, status_color, bold=True)
-        idx_str = UI.paint(f"{i + 1:02}.", UI.CLR_MUTED)
-        print(
-            f" {idx_str}  {display_name}  {UI.muted(_('label_id'))} {user_id_str}  {own_count}  {context_count}  {status}{chat_info}"
-        )
-
-
-def get_dirty_target_ids(stats: dict) -> list:
+def get_dirty_target_ids(stats: Any) -> list:
     """Returns only targets that actually received new messages during update."""
-    dirty_ids = []
-    for uid, item in stats.items():
-        if not isinstance(item, dict):
-            continue
-        if item.get("dirty") or item.get("count", 0) > 0:
-            dirty_ids.append(uid)
-    return dirty_ids
+    try:
+        report = TrackedSyncRunReport.coerce(stats)
+    except TypeError:
+        return []
+    return report.dirty_user_ids()
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
@@ -472,7 +249,7 @@ async def _run_export_sync(
     if user_ent or isinstance(final_uid, int):
         return await ctx.exporter.sync_all_dialogs_for_user(
             final_uid,
-            target_chat_ids=settings.chats_to_search_user_msgs,
+            target_chat_ids=ctx.settings.chats_to_search_user_msgs,
             deep_mode=deep_mode,
             force_resync=force_resync,
             context_window=context_window,
@@ -522,7 +299,7 @@ async def _emit_export_summary(
 
 async def _sync_and_export_dirty_targets(
     ctx: CLIContext, *, emit_telemetry_summary: bool
-) -> dict:
+) -> TrackedSyncRunReport:
     stats = await ctx.exporter.sync_all_tracked()
     for uid in get_dirty_target_ids(stats):
         await ctx.db_exporter.export_user_messages(
@@ -533,69 +310,68 @@ async def _sync_and_export_dirty_targets(
     return stats
 
 
-def _print_update_summary(stats: dict, *, title: str) -> None:
-    total_processed = sum(
-        item["count"] for item in stats.values() if isinstance(item, dict)
-    )
-    UI.print_final_summary(
-        "sync_summary_title",
-        [
-            {
-                "title": title,
-                "lines": [
-                    ("processed", total_processed),
-                    ("targets", len(stats)),
-                ],
-            }
-        ],
-    )
-
-
 def _print_alias_install_result(ctx: CLIContext, *, paint_errors: bool) -> None:
     res = ctx.alias_manager.install()
-    if "success" in res:
-        print(res["message"])
-        if "activate_cmd" in res:
-            print(res["activate_cmd"])
+    if res.success:
+        if res.rc_path:
+            print(_("setup_success_unix", path=res.rc_path))
+            print(_("setup_activate", path=res.rc_path))
+        elif res.bin_dir:
+            print(_("setup_success_win", dir=res.bin_dir))
         print("\n" + _("alias_header"))
-        for line in ctx.alias_manager.get_alias_help()[1:]:
-            print(line)
+        for spec in ctx.alias_manager.get_alias_specs():
+            print(f"  {spec.alias:<4} -> {_(spec.label_key)}")
         return
 
-    error_message = res.get(
-        "error", "Error during setup." if paint_errors else "Error during setup"
-    )
+    if res.error_kind == "unsupported_platform":
+        error_message = _("setup_platform_error", plt=res.platform)
+    else:
+        error_message = res.error_detail or (
+            "Error during setup." if paint_errors else "Error during setup"
+        )
     if paint_errors:
         print(UI.paint(error_message, UI.CLR_ERROR))
     else:
         print(error_message)
 
 
-def _pause_for_enter() -> None:
-    sys.stdout.write("\n" + _("press_enter"))
-    sys.stdout.flush()
-    TerminalInput.get_char()
+def _prompt_scheduler_setup_request() -> SchedulerSetupRequest:
+    default_request = SchedulerSetupRequest()
+    try:
+        time_input = input(_("sched_time_prompt")).strip()
+    except EOFError:
+        return default_request
+
+    if not time_input:
+        return default_request
+
+    try:
+        hour_str, minute_str = time_input.split(":", 1)
+        return SchedulerSetupRequest(hour=int(hour_str), minute=int(minute_str))
+    except (ValueError, TypeError):
+        print(UI.paint(_("sched_invalid_time"), UI.CLR_WARN))
+        return default_request
 
 
-def _render_main_menu(me_id: Any) -> None:
-    UI.clear_screen()
-    UI.print_gradient_banner()
-    print(UI.rule(105))
-    print(
-        f" {UI.section(_('section_control_center'), icon='◆')}  {UI.key_value(_('label_account'), me_id, icon='◌')}"
-    )
-    print(f" {UI.muted('ESC — back/cancel   ·   0 — exit')}")
-    print(UI.rule(105))
-    for i in range(1, 10):
-        print(
-            f" {UI.paint(f'[{i}]', UI.CLR_ACCENT, bold=True)} {UI.paint(_('menu_' + str(i)), UI.CLR_TEXT)}  {UI.muted(_('menu_' + str(i) + '_desc'))}"
-        )
-    print(
-        f" {UI.paint('[L]', UI.CLR_ACCENT, bold=True)} {UI.paint(_('menu_lang'), UI.CLR_TEXT)}"
-    )
-    print(
-        f" {UI.paint('[0]', UI.CLR_ACCENT, bold=True)} {UI.paint(_('menu_exit'), UI.CLR_TEXT)}"
-    )
+def _print_scheduler_setup_result(
+    result: SchedulerSetupResult, *, paint_errors: bool
+) -> None:
+    if result.success:
+        mode = _("sched_daily_at", time=f"{result.hour:02d}:{result.minute:02d}")
+        print(_("sched_success_macos", mode=mode))
+        print(_("sched_logs_path", path=result.logs_dir))
+        print(_("sched_complete"))
+        return
+
+    if result.error_kind == "launchctl_load_failed":
+        error_message = _("sched_register_error", error=result.error_detail or "")
+    else:
+        error_message = _("sched_unexpected_error", error=result.error_detail or "")
+
+    if paint_errors:
+        print(UI.paint(error_message, UI.CLR_ERROR))
+    else:
+        print(error_message)
 
 
 async def _handle_setup_command(ctx: CLIContext, args: argparse.Namespace) -> None:
@@ -603,7 +379,13 @@ async def _handle_setup_command(ctx: CLIContext, args: argparse.Namespace) -> No
 
 
 async def _handle_schedule_command(ctx: CLIContext, args: argparse.Namespace) -> None:
-    await setup_scheduler()
+    request = _prompt_scheduler_setup_request()
+    result = await setup_scheduler(
+        request,
+        project_root=ctx.paths.project_root,
+        python_path=ctx.runtime.python_executable,
+    )
+    _print_scheduler_setup_result(result, paint_errors=False)
 
 
 async def _handle_delete_command(ctx: CLIContext, args: argparse.Namespace) -> None:
@@ -652,7 +434,7 @@ async def _handle_export_command(ctx: CLIContext, args: argparse.Namespace) -> N
 
 async def _handle_update_command(ctx: CLIContext, args: argparse.Namespace) -> None:
     stats = await _sync_and_export_dirty_targets(ctx, emit_telemetry_summary=True)
-    _print_update_summary(stats, title=_("label_update"))
+    print_update_summary(stats, title=_("label_update"))
 
 
 async def _handle_clean_command(ctx: CLIContext, args: argparse.Namespace) -> None:
@@ -731,7 +513,7 @@ async def _handle_menu_export(ctx: CLIContext) -> None:
                 show_finalize_section=False,
                 show_saved_path=False,
             )
-    _pause_for_enter()
+    pause_for_enter()
 
 
 async def _handle_menu_update(ctx: CLIContext) -> None:
@@ -740,8 +522,8 @@ async def _handle_menu_update(ctx: CLIContext) -> None:
         ctx, emit_telemetry_summary=False
     )
     if updated_stats:
-        _print_update_summary(updated_stats, title="Update")
-    _pause_for_enter()
+        print_update_summary(updated_stats, title="Update")
+    pause_for_enter()
 
 
 async def _handle_menu_clean(ctx: CLIContext) -> None:
@@ -757,7 +539,7 @@ async def _handle_menu_clean(ctx: CLIContext) -> None:
         print(
             f"\n{UI.section(_('summary_header'), icon='◆')}\n{_('total_deleted_msgs', count=deleted)}"
         )
-    _pause_for_enter()
+    pause_for_enter()
 
 
 async def _handle_menu_export_pm(ctx: CLIContext) -> None:
@@ -767,7 +549,7 @@ async def _handle_menu_export_pm(ctx: CLIContext) -> None:
         user_ent, unused = await get_safe_user_and_chat(ctx.client, target_str.strip())
         if user_ent:
             await ctx.private_archive.archive_pm(user_ent)
-    _pause_for_enter()
+    pause_for_enter()
 
 
 async def _handle_menu_delete_data(ctx: CLIContext) -> None:
@@ -777,29 +559,36 @@ async def _handle_menu_delete_data(ctx: CLIContext) -> None:
         print_target_list(users)
         idx = TerminalInput.prompt_with_esc("\nChoice: ")
         if idx and idx.isdigit() and 1 <= int(idx) <= len(users):
-            await ctx.cleaner.purge_user_data(users[int(idx) - 1]["user_id"])
+            target = PrimaryTarget.coerce(users[int(idx) - 1])
+            await ctx.cleaner.purge_user_data(target.user_id)
         else:
             print(UI.paint(_("text_invalid_selection"), UI.CLR_WARN))
     else:
         print(UI.paint(_("no_targets"), UI.CLR_WARN))
-    _pause_for_enter()
+    pause_for_enter()
 
 
 async def _handle_menu_schedule(ctx: CLIContext) -> None:
     UI.print_header(_("menu_6"), _("help_desc_6"))
-    await setup_scheduler()
-    _pause_for_enter()
+    request = _prompt_scheduler_setup_request()
+    result = await setup_scheduler(
+        request,
+        project_root=ctx.paths.project_root,
+        python_path=ctx.runtime.python_executable,
+    )
+    _print_scheduler_setup_result(result, paint_errors=True)
+    pause_for_enter()
 
 
 async def _handle_menu_setup(ctx: CLIContext) -> None:
     UI.print_header(_("menu_7"), _("sub_setup_info"))
     _print_alias_install_result(ctx, paint_errors=True)
-    _pause_for_enter()
+    pause_for_enter()
 
 
 async def _handle_menu_about(ctx: CLIContext) -> None:
     UI.print_header(_("menu_8"), _("about_text"))
-    _pause_for_enter()
+    pause_for_enter()
 
 
 async def _handle_menu_db_export(ctx: CLIContext) -> None:
@@ -809,19 +598,17 @@ async def _handle_menu_db_export(ctx: CLIContext) -> None:
         print_target_list(users)
         idx_str = TerminalInput.prompt_with_esc("\n" + _("choice_prompt") + ": ")
         if idx_str and idx_str.isdigit() and 1 <= int(idx_str) <= len(users):
-            target = users[int(idx_str) - 1]
+            target = PrimaryTarget.coerce(users[int(idx_str) - 1])
             fmt = TerminalInput.prompt_with_esc(_("label_format_prompt"))
             if fmt == "1":
-                await ctx.db_exporter.export_user_messages(
-                    target["user_id"], as_json=True
-                )
+                await ctx.db_exporter.export_user_messages(target.user_id, as_json=True)
             elif fmt == "2":
                 await ctx.db_exporter.export_user_messages(
-                    target["user_id"], as_json=False
+                    target.user_id, as_json=False
                 )
     else:
         print(UI.paint(_("no_targets"), UI.CLR_WARN))
-    _pause_for_enter()
+    pause_for_enter()
 
 
 async def _dispatch_main_menu_choice(ctx: CLIContext, choice: str) -> bool:
@@ -848,66 +635,72 @@ async def _dispatch_main_menu_choice(ctx: CLIContext, choice: str) -> bool:
     return True
 
 
-async def run_cli():
+async def run_cli(runtime: Optional[AppRuntime] = None):
     """Main CLI entry point with subcommand support."""
-    parser = build_cli_parser()
-    args = parser.parse_args()
+    active_runtime = runtime or build_app_runtime()
+    with use_lang(active_runtime.settings.lang):
+        parser = build_cli_parser()
+        args = parser.parse_args()
 
-    if not args.command:
-        if not sys.stdin.isatty() or not sys.stdout.isatty():
-            parser.print_help()
+        if not args.command:
+            if not sys.stdin.isatty() or not sys.stdout.isatty():
+                parser.print_help()
+                return
+            await main_menu(runtime=active_runtime)
             return
-        await main_menu()
-        return
 
-    ctx = CLIContext(needs_client=_command_needs_client(args.command))
+        ctx = CLIContext(
+            active_runtime, needs_client=_command_needs_client(args.command)
+        )
 
-    try:
-        await ctx.initialize()
-        handlers = {
-            "setup": _handle_setup_command,
-            "schedule": _handle_schedule_command,
-            "delete": _handle_delete_command,
-            "db-export": _handle_db_export_command,
-            "export": _handle_export_command,
-            "update": _handle_update_command,
-            "clean": _handle_clean_command,
-            "export-pm": _handle_export_pm_command,
-        }
-        handler = handlers.get(args.command)
-        if handler is not None:
-            await handler(ctx, args)
+        try:
+            await ctx.initialize()
+            handlers = {
+                "setup": _handle_setup_command,
+                "schedule": _handle_schedule_command,
+                "delete": _handle_delete_command,
+                "db-export": _handle_db_export_command,
+                "export": _handle_export_command,
+                "update": _handle_update_command,
+                "clean": _handle_clean_command,
+                "export-pm": _handle_export_pm_command,
+            }
+            handler = handlers.get(args.command)
+            if handler is not None:
+                await handler(ctx, args)
 
-    finally:
-        await ctx.shutdown()
+        finally:
+            await ctx.shutdown()
 
 
-async def main_menu():
+async def main_menu(runtime: Optional[AppRuntime] = None):
     """Main interactive menu logic."""
-    ctx = CLIContext(needs_client=True)
-    try:
-        await ctx.initialize()
-        me = await ctx.client.get_me()
-        me_id = me.id if me else "Unknown"
+    active_runtime = runtime or build_app_runtime()
+    with use_lang(active_runtime.settings.lang):
+        ctx = CLIContext(active_runtime, needs_client=True)
+        try:
+            await ctx.initialize()
+            me = await ctx.client.get_me()
+            me_id = me.id if me else "Unknown"
 
-        while True:
-            _render_main_menu(me_id)
-            sys.stdout.write(_("choice_prompt") + ": ")
-            sys.stdout.flush()
-            char = TerminalInput.get_char()
-            if char == "\x1b":
-                continue
-            choice = char.upper()
-            print(choice)
-            if not await _dispatch_main_menu_choice(ctx, choice):
-                break
-    finally:
-        await ctx.shutdown()
+            while True:
+                render_main_menu(me_id)
+                sys.stdout.write(_("choice_prompt") + ": ")
+                sys.stdout.flush()
+                char = TerminalInput.get_char()
+                if char == "\x1b":
+                    continue
+                choice = char.upper()
+                print(choice)
+                if not await _dispatch_main_menu_choice(ctx, choice):
+                    break
+        finally:
+            await ctx.shutdown()
 
 
 def main():
     try:
-        asyncio.run(run_cli())
+        asyncio.run(run_cli(runtime=build_app_runtime()))
     except KeyboardInterrupt:
         sys.exit(0)
 

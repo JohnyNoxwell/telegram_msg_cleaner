@@ -9,6 +9,11 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional
 from .file_writer import FileRotateWriter
 from ..infrastructure.storage.interface import DBExportStorage
+from ..infrastructure.storage.records import (
+    StoredUser,
+    UserExportRow,
+    UserExportSummary,
+)
 from ..core.models.message import MessageData
 from ..core.telemetry import telemetry
 from ..utils.ui import UI
@@ -18,9 +23,9 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class _DBExportSource:
-    export_summary: Optional[Dict[str, Any]]
-    export_rows: Optional[List[Dict[str, Any]]]
-    export_row_iter_factory: Optional[Callable[[], Iterable[Dict[str, Any]]]]
+    export_summary: Optional[UserExportSummary]
+    export_rows: Optional[List[UserExportRow]]
+    export_row_iter_factory: Optional[Callable[[], Iterable[UserExportRow]]]
     messages: Optional[List[MessageData]]
     source_count: int
 
@@ -38,8 +43,14 @@ class DBExportService:
     Service responsible for exporting cached messages from the database into files.
     """
 
-    def __init__(self, storage: DBExportStorage):
+    def __init__(
+        self,
+        storage: DBExportStorage,
+        *,
+        default_output_dir: str = "DB_EXPORTS",
+    ):
         self.storage = storage
+        self.default_output_dir = default_output_dir
 
     def _manifest_dir(self, output_dir: str) -> str:
         return os.path.join(output_dir, ".export_state")
@@ -132,7 +143,7 @@ class DBExportService:
     def _resolve_export_author_name(
         self, user_id: int, messages: List[MessageData]
     ) -> str:
-        db_user = self.storage.get_user(user_id)
+        db_user = StoredUser.coerce(self.storage.get_user(user_id))
         if db_user:
             formatted = UI.format_name(db_user)
             if formatted and formatted != "Unknown" and not formatted.startswith("ID:"):
@@ -145,30 +156,30 @@ class DBExportService:
         return f"User_{user_id}"
 
     def _resolve_export_author_name_from_rows(
-        self, user_id: int, rows: List[Dict[str, Any]]
+        self, user_id: int, rows: List[UserExportRow]
     ) -> str:
-        db_user = self.storage.get_user(user_id)
+        db_user = StoredUser.coerce(self.storage.get_user(user_id))
         if db_user:
             formatted = UI.format_name(db_user)
             if formatted and formatted != "Unknown" and not formatted.startswith("ID:"):
                 return formatted
 
         for row in rows:
-            if row.get("user_id") == user_id and row.get("author_name"):
-                return str(row["author_name"]).strip()
+            if row.user_id == user_id and row.author_name:
+                return str(row.author_name).strip()
 
         return f"User_{user_id}"
 
     def _resolve_export_author_name_from_summary(
-        self, user_id: int, summary: Dict[str, Any]
+        self, user_id: int, summary: UserExportSummary
     ) -> str:
-        db_user = self.storage.get_user(user_id)
+        db_user = StoredUser.coerce(self.storage.get_user(user_id))
         if db_user:
             formatted = UI.format_name(db_user)
             if formatted and formatted != "Unknown" and not formatted.startswith("ID:"):
                 return formatted
 
-        author_name = summary.get("target_author_name")
+        author_name = summary.target_author_name
         if isinstance(author_name, str) and author_name.strip():
             return author_name.strip()
 
@@ -220,8 +231,8 @@ class DBExportService:
             raw=raw,
         )
 
-    def _serialize_ai_row(self, row: Dict[str, Any]) -> str:
-        raw_payload = row.get("raw_payload")
+    def _serialize_ai_row(self, row: UserExportRow) -> str:
+        raw_payload = row.raw_payload
         if isinstance(raw_payload, str):
             try:
                 raw = json.loads(raw_payload)
@@ -233,17 +244,17 @@ class DBExportService:
             raw = {}
 
         payload = self._serialize_ai_payload(
-            message_id=row["message_id"],
-            chat_id=row["chat_id"],
-            user_id=row["user_id"],
-            author_name=row.get("author_name"),
-            timestamp=row["timestamp"],
-            text=row.get("text"),
-            reply_to_id=row.get("reply_to_id"),
-            media_type=row.get("media_type"),
-            fwd_from_id=row.get("fwd_from_id"),
-            context_group_id=row.get("context_group_id"),
-            is_service=bool(row.get("is_service")),
+            message_id=row.message_id,
+            chat_id=row.chat_id,
+            user_id=row.user_id,
+            author_name=row.author_name,
+            timestamp=row.timestamp,
+            text=row.text,
+            reply_to_id=row.reply_to_id,
+            media_type=row.media_type,
+            fwd_from_id=row.fwd_from_id,
+            context_group_id=row.context_group_id,
+            is_service=row.is_service,
             raw=raw,
         )
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -339,26 +350,30 @@ class DBExportService:
             summary_getter = getattr(self.storage, "get_user_export_summary", None)
             iter_getter = getattr(self.storage, "iter_user_export_rows", None)
             if callable(summary_getter):
-                export_summary = summary_getter(user_id)
+                export_summary = UserExportSummary.coerce(summary_getter(user_id))
                 if export_summary and callable(iter_getter):
                     return _DBExportSource(
                         export_summary=export_summary,
                         export_rows=None,
-                        export_row_iter_factory=lambda: iter_getter(user_id),
+                        export_row_iter_factory=lambda: (
+                            UserExportRow.coerce(row) for row in iter_getter(user_id)
+                        ),
                         messages=None,
-                        source_count=int(export_summary["message_count"]),
+                        source_count=export_summary.message_count,
                     )
 
             getter = getattr(self.storage, "get_user_export_rows", None)
             if callable(getter):
-                export_rows = getter(user_id)
+                raw_rows = getter(user_id)
+                if raw_rows is not None:
+                    export_rows = [UserExportRow.coerce(row) for row in raw_rows]
 
         messages = (
             None if export_rows is not None else self.storage.get_user_messages(user_id)
         )
         source_count = 0
         if export_summary:
-            source_count = int(export_summary["message_count"])
+            source_count = export_summary.message_count
         elif export_rows is not None:
             source_count = len(export_rows)
         elif messages is not None:
@@ -392,11 +407,11 @@ class DBExportService:
             )
             fingerprint = {
                 "user_id": user_id,
-                "message_count": int(summary["message_count"]),
-                "first_message_id": summary["first_message_id"],
-                "last_message_id": summary["last_message_id"],
-                "first_timestamp": summary["first_timestamp"],
-                "last_timestamp": summary["last_timestamp"],
+                "message_count": summary.message_count,
+                "first_message_id": summary.first_message_id,
+                "last_message_id": summary.last_message_id,
+                "first_timestamp": summary.first_timestamp,
+                "last_timestamp": summary.last_timestamp,
                 "as_json": as_json,
                 "include_date": include_date,
                 "json_profile": json_profile,
@@ -615,7 +630,7 @@ class DBExportService:
     async def export_user_messages(
         self,
         user_id: int,
-        output_dir: str = "DB_EXPORTS",
+        output_dir: Optional[str] = None,
         as_json: bool = False,
         include_date: bool = False,
         json_profile: str = "ai",
@@ -625,6 +640,8 @@ class DBExportService:
         Returns the base output path.
         """
         started_at = perf_counter()
+        resolved_output_dir = output_dir or self.default_output_dir
+
         source = self._load_export_source(
             user_id=user_id,
             as_json=as_json,
@@ -634,19 +651,19 @@ class DBExportService:
             logger.warning(f"No messages found in DB for user {user_id}")
             return ""
 
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        if not os.path.exists(resolved_output_dir):
+            os.makedirs(resolved_output_dir)
 
         plan = self._prepare_export_plan(
             user_id=user_id,
-            output_dir=output_dir,
+            output_dir=resolved_output_dir,
             source=source,
             as_json=as_json,
             include_date=include_date,
             json_profile=json_profile,
         )
         unchanged_path = self._maybe_skip_unchanged_export(
-            output_dir=output_dir,
+            output_dir=resolved_output_dir,
             user_id=user_id,
             fingerprint=plan.fingerprint,
             source_count=source.source_count,
@@ -655,7 +672,7 @@ class DBExportService:
             return unchanged_path
 
         self._cleanup_existing_export_files(
-            output_dir=output_dir,
+            output_dir=resolved_output_dir,
             user_id=user_id,
             ext=plan.ext,
             output_path=plan.output_path,
@@ -689,7 +706,7 @@ class DBExportService:
             },
         )
         self._persist_export_manifest(
-            output_dir,
+            resolved_output_dir,
             user_id,
             {
                 "output_path": plan.output_path,

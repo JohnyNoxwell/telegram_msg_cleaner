@@ -1,3 +1,4 @@
+import json
 import os
 import logging
 from typing import Set, Optional, Any
@@ -9,6 +10,7 @@ from pydantic_settings import (
 )
 
 logger = logging.getLogger(__name__)
+SUPPORTED_LANGS = {"ru", "en"}
 
 
 class Settings(BaseSettings):
@@ -67,6 +69,12 @@ class Settings(BaseSettings):
     # Observability
     log_level: str = "INFO"
 
+    # UI / localization
+    lang: str = Field(
+        default="ru",
+        validation_alias=AliasChoices("lang", "language", "ui_language"),
+    )
+
     @field_validator("api_id", mode="before")
     @classmethod
     def validate_api_id(cls, v):
@@ -96,6 +104,44 @@ class Settings(BaseSettings):
             return normalized
         return v
 
+    @field_validator("lang", mode="before")
+    @classmethod
+    def normalize_lang(cls, v):
+        if v is None:
+            return "ru"
+        lang = str(v).strip().lower()
+        if lang in SUPPORTED_LANGS:
+            return lang
+        return "ru"
+
+
+def _resolve_config_value(field_name: str, config_data: dict[str, Any]) -> Any:
+    if field_name in config_data:
+        return config_data[field_name]
+
+    field_info = Settings.model_fields.get(field_name)
+    if field_info is None:
+        return None
+
+    validation_alias = field_info.validation_alias
+    if isinstance(validation_alias, AliasChoices):
+        for choice in validation_alias.choices:
+            if isinstance(choice, str) and choice in config_data:
+                return config_data[choice]
+    elif isinstance(validation_alias, str) and validation_alias in config_data:
+        return config_data[validation_alias]
+
+    return None
+
+
+def _normalized_config_data(config_data: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for field_name in Settings.model_fields:
+        value = _resolve_config_value(field_name, config_data)
+        if value is not None:
+            normalized[field_name] = value
+    return normalized
+
 
 def load_settings(config_path: Optional[str] = None) -> Settings:
     """
@@ -105,17 +151,14 @@ def load_settings(config_path: Optional[str] = None) -> Settings:
     # To support config.json explicitly if needed:
     try:
         if config_path and os.path.exists(config_path):
-            import json
-
-            config_data = json.loads(open(config_path, "r").read())
+            with open(config_path, "r", encoding="utf-8") as f:
+                config_data = _normalized_config_data(json.load(f))
             synthetic_env: list[str] = []
             for key, value in config_data.items():
                 env_key = f"TG_{key.upper()}"
                 if env_key in os.environ:
                     continue
                 if isinstance(value, (list, set, tuple, dict)):
-                    import json
-
                     env_value = json.dumps(
                         list(value) if isinstance(value, set) else value
                     )
@@ -132,7 +175,3 @@ def load_settings(config_path: Optional[str] = None) -> Settings:
     except Exception as e:
         logger.error(f"Configuration error: {e}")
         raise
-
-
-# Global settings instance
-settings = load_settings("config.json")

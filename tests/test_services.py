@@ -8,6 +8,13 @@ from datetime import datetime, timedelta, timezone
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tg_msg_manager.core.models.message import MessageData
+from tg_msg_manager.core.models.service_payloads import (
+    ExportSyncStartedPayload,
+    ExportSyncSummaryPayload,
+    PrivateArchiveCompletedPayload,
+    PrivateArchiveMediaSavedPayload,
+    PrivateArchiveStartedPayload,
+)
 from tg_msg_manager.core.telemetry import telemetry
 from tg_msg_manager.services.exporter import ExportService
 from tg_msg_manager.services.context_engine import DeepModeEngine
@@ -141,13 +148,31 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
         service = ExportService(
             self.mock_client, self.mock_storage, event_sink=events.append
         )
-        await service.sync_chat(MagicMock(id=1, title="Test Chat"), limit=10)
+        chat_entity = type("ChatEntity", (), {"id": 1, "title": "Test Chat"})()
+        await service.sync_chat(chat_entity, limit=10)
 
         event_names = [event.name for event in events]
         self.assertIn("export.sync_chat_started", event_names)
         self.assertIn("export.sync_progress", event_names)
         self.assertIn("export.sync_finished", event_names)
         self.assertIn("export.sync_summary", event_names)
+
+        started_event = next(
+            event for event in events if event.name == "export.sync_chat_started"
+        )
+        started_payload = ExportSyncStartedPayload.coerce(started_event.payload)
+        self.assertEqual(started_payload.chat_title, "Test Chat")
+        self.assertFalse(started_payload.deep_mode)
+        self.assertIsNone(started_payload.status_kind)
+        self.assertNotIn("mode_str", started_event.payload)
+        self.assertNotIn("status_str", started_event.payload)
+
+        summary_event = next(
+            event for event in events if event.name == "export.sync_summary"
+        )
+        summary_payload = ExportSyncSummaryPayload.coerce(summary_event.payload)
+        self.assertEqual(summary_payload.own_messages, 1)
+        self.assertEqual(summary_payload.with_context, 1)
 
     async def test_export_limit_uses_single_worker_range(self):
         msg1 = MessageData(
@@ -187,11 +212,11 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(ranges)
-        self.assertTrue(all(item["role"] == "TAIL" for item in ranges))
+        self.assertTrue(all(item.role == "TAIL" for item in ranges))
 
         covered = set()
         for item in ranges:
-            chunk = set(range(item["lower"], item["upper"] + 1))
+            chunk = set(range(item.lower, item.upper + 1))
             self.assertTrue(covered.isdisjoint(chunk))
             covered.update(chunk)
 
@@ -207,15 +232,19 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
             limit=None,
         )
 
-        head_ranges = [item for item in ranges if item["role"] == "HEAD"]
-        tail_ranges = [item for item in ranges if item["role"] == "TAIL"]
+        head_ranges = [item for item in ranges if item.role == "HEAD"]
+        tail_ranges = [item for item in ranges if item.role == "TAIL"]
 
-        self.assertEqual(head_ranges, [{"upper": 120, "lower": 101, "role": "HEAD"}])
+        self.assertEqual(len(head_ranges), 1)
+        self.assertEqual(
+            (head_ranges[0].upper, head_ranges[0].lower, head_ranges[0].role),
+            (120, 101, "HEAD"),
+        )
         self.assertTrue(tail_ranges)
 
         covered = set()
         for item in ranges:
-            chunk = set(range(item["lower"], item["upper"] + 1))
+            chunk = set(range(item.lower, item.upper + 1))
             self.assertTrue(covered.isdisjoint(chunk))
             covered.update(chunk)
 
@@ -232,7 +261,11 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
             allow_history=False,
         )
 
-        self.assertEqual(ranges, [{"upper": 120, "lower": 101, "role": "HEAD"}])
+        self.assertEqual(len(ranges), 1)
+        self.assertEqual(
+            (ranges[0].upper, ranges[0].lower, ranges[0].role),
+            (120, 101, "HEAD"),
+        )
 
     def test_resolve_tail_progress_checkpoint_uses_highest_contiguous_prefix_only(self):
         service = ExportService(self.mock_client, self.mock_storage)
@@ -1214,9 +1247,14 @@ class TestServices(unittest.IsolatedAsyncioTestCase):
                 "private_archive.completed",
             ],
         )
-        self.assertEqual(events[0].payload["user_id"], 1)
-        self.assertEqual(events[1].payload["filename"], "test_media.jpg")
-        self.assertEqual(events[2].payload["count"], 1)
+        started_payload = PrivateArchiveStartedPayload.coerce(events[0].payload)
+        saved_payload = PrivateArchiveMediaSavedPayload.coerce(events[1].payload)
+        completed_payload = PrivateArchiveCompletedPayload.coerce(events[2].payload)
+        self.assertEqual(started_payload.user_id, 1)
+        self.assertEqual(saved_payload.filename, "test_media.jpg")
+        self.assertEqual(completed_payload.count, 1)
+        self.assertEqual(completed_payload.stats.photo, 1)
+        self.assertEqual(completed_payload.archive_stats.downloaded, 1)
 
 
 if __name__ == "__main__":

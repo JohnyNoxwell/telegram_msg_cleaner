@@ -1,7 +1,11 @@
+import asyncio
 import os
 import sys
 import logging
 import subprocess
+from typing import Callable, Optional
+
+from ..core.models.setup import SchedulerSetupRequest, SchedulerSetupResult
 
 logger = logging.getLogger(__name__)
 
@@ -41,62 +45,91 @@ PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-async def setup_scheduler():
-    """
-    Interactive setup for macOS launchd scheduler.
-    """
-    print("\n--- Setup Background Scheduler (macOS launchd) ---")
-
-    project_root = os.getcwd()
-    python_path = sys.executable
-
-    # Defaults
-    hour = 5
-    minute = 0
-
-    try:
-        hour_in = input(f"Enter hour for daily sync [0-23] (default {hour}): ").strip()
-        if hour_in:
-            hour = int(hour_in)
-
-        min_in = input(f"Enter minute [0-59] (default {minute}): ").strip()
-        if min_in:
-            minute = int(min_in)
-    except ValueError:
-        print("Invalid input, using defaults.")
+def _setup_scheduler_sync(
+    request: SchedulerSetupRequest,
+    *,
+    project_root: Optional[str] = None,
+    python_path: Optional[str] = None,
+    home_dir: Optional[str] = None,
+    subprocess_run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> SchedulerSetupResult:
+    project_root = os.path.abspath(project_root or os.getcwd())
+    python_path = python_path or sys.executable
+    logs_dir = os.path.join(project_root, "LOGS")
 
     plist_content = PLIST_TEMPLATE.format(
-        python_path=python_path, project_root=project_root, hour=hour, minute=minute
+        python_path=python_path,
+        project_root=project_root,
+        hour=request.hour,
+        minute=request.minute,
     )
 
-    home_dir = os.path.expanduser("~")
+    home_dir = os.path.abspath(home_dir or os.path.expanduser("~"))
     plist_path = os.path.join(
         home_dir, "Library/LaunchAgents/com.tg-msg-manager.update.plist"
     )
 
     try:
+        os.makedirs(os.path.dirname(plist_path), exist_ok=True)
+        os.makedirs(logs_dir, exist_ok=True)
+
         # 1. Write plist
         with open(plist_path, "w") as f:
             f.write(plist_content)
 
-        # 2. Ensure LOGS dir exists
-        os.makedirs(os.path.join(project_root, "LOGS"), exist_ok=True)
-
-        # 3. Register with launchctl
+        # 2. Register with launchctl
         # Unload if exists first
-        subprocess.run(["launchctl", "unload", plist_path], capture_output=True)
-        result = subprocess.run(["launchctl", "load", plist_path], capture_output=True)
+        subprocess_run(["launchctl", "unload", plist_path], capture_output=True)
+        result = subprocess_run(["launchctl", "load", plist_path], capture_output=True)
 
         if result.returncode == 0:
-            print("\n✅ Scheduler successfully registered!")
-            print(f"Task will run daily at {hour:02d}:{minute:02d}")
-            print(f"Logs: {project_root}/LOGS/scheduler_*.log")
-        else:
-            print(f"\n❌ Error registering task: {result.stderr.decode()}")
+            return SchedulerSetupResult(
+                success=True,
+                plist_path=plist_path,
+                logs_dir=logs_dir,
+                hour=request.hour,
+                minute=request.minute,
+            )
 
+        return SchedulerSetupResult(
+            success=False,
+            plist_path=plist_path,
+            logs_dir=logs_dir,
+            hour=request.hour,
+            minute=request.minute,
+            error_kind="launchctl_load_failed",
+            error_detail=result.stderr.decode().strip(),
+        )
     except Exception as e:
         logger.error(f"Failed to setup scheduler: {e}")
-        print(f"\n❌ Unexpected error: {e}")
+        return SchedulerSetupResult(
+            success=False,
+            plist_path=plist_path,
+            logs_dir=logs_dir,
+            hour=request.hour,
+            minute=request.minute,
+            error_kind="unexpected",
+            error_detail=str(e),
+        )
+
+
+async def setup_scheduler(
+    request: SchedulerSetupRequest,
+    *,
+    project_root: Optional[str] = None,
+    python_path: Optional[str] = None,
+    home_dir: Optional[str] = None,
+    subprocess_run: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+) -> SchedulerSetupResult:
+    """Registers the macOS launchd scheduler using a structured request."""
+    return await asyncio.to_thread(
+        _setup_scheduler_sync,
+        request,
+        project_root=project_root,
+        python_path=python_path,
+        home_dir=home_dir,
+        subprocess_run=subprocess_run,
+    )
 
 
 async def remove_scheduler():

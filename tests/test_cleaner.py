@@ -7,6 +7,10 @@ from datetime import datetime
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tg_msg_manager.core.models.service_payloads import (
+    CleanerDialogMessagesFoundPayload,
+    CleanerDialogScanStartedPayload,
+)
 from tg_msg_manager.services.cleaner import CleanerService
 from tg_msg_manager.infrastructure.storage.sqlite import SQLiteStorage
 
@@ -181,8 +185,10 @@ class TestCleaner(unittest.IsolatedAsyncioTestCase):
                 "cleaner.dialog_messages_found",
             ],
         )
-        self.assertEqual(events[0].payload["name"], "Allowed Group")
-        self.assertEqual(events[1].payload["count"], 1)
+        started_payload = CleanerDialogScanStartedPayload.coerce(events[0].payload)
+        found_payload = CleanerDialogMessagesFoundPayload.coerce(events[1].payload)
+        self.assertEqual(started_payload.name, "Allowed Group")
+        self.assertEqual(found_payload.count, 1)
 
     async def test_global_self_cleanup_skips_whitelisted_full_telegram_chat_id(self):
         channel_id = 1700453512

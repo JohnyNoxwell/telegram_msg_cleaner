@@ -7,6 +7,16 @@ from typing import Iterable, List, Optional
 
 from ...core.models.message import MessageData
 from ...core.telemetry import telemetry
+from .records import (
+    PrimaryTarget,
+    RetryTaskRecord,
+    StoredUser,
+    SyncStatus,
+    SyncUser,
+    TargetMessageBreakdown,
+    UserExportRow,
+    UserExportSummary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,26 +67,26 @@ class SQLiteReadPathMixin:
             ).fetchone()
             return row["last_msg_id"] if row else 0
 
-    def get_sync_status(self, chat_id: int, user_id: int) -> dict:
+    def get_sync_status(self, chat_id: int, user_id: int) -> SyncStatus:
         with self._read_connection() as conn:
             row = conn.execute(
                 """
-                SELECT last_msg_id, tail_msg_id, is_complete, deep_mode, recursive_depth, author_name
+                SELECT
+                    last_msg_id,
+                    tail_msg_id,
+                    is_complete,
+                    deep_mode,
+                    recursive_depth,
+                    last_sync_at,
+                    author_name
                 FROM sync_targets
                 WHERE user_id = ? AND chat_id = ?
             """,
                 (user_id, chat_id),
             ).fetchone()
             if row:
-                return dict(row)
-        return {
-            "last_msg_id": 0,
-            "tail_msg_id": 0,
-            "is_complete": 0,
-            "deep_mode": 0,
-            "recursive_depth": 0,
-            "last_sync_at": 0,
-        }
+                return SyncStatus.coerce(dict(row))
+        return SyncStatus()
 
     def filter_existing_ids(self, chat_id: int, message_ids: List[int]) -> List[int]:
         if not message_ids:
@@ -235,7 +245,7 @@ class SQLiteReadPathMixin:
         )
         return missing_ids
 
-    def get_unique_sync_users(self) -> List[dict]:
+    def get_unique_sync_users(self) -> List[SyncUser]:
         with self._read_connection() as conn:
             rows = conn.execute("""
                 SELECT DISTINCT user_id, author_name
@@ -244,18 +254,18 @@ class SQLiteReadPathMixin:
                 ORDER BY author_name ASC
             """).fetchall()
             return [
-                {"user_id": row["user_id"], "author_name": row["author_name"]}
+                SyncUser(user_id=row["user_id"], author_name=row["author_name"])
                 for row in rows
             ]
 
-    def get_user(self, user_id: int) -> Optional[dict]:
+    def get_user(self, user_id: int) -> Optional[StoredUser]:
         with self._read_connection() as conn:
             row = conn.execute(
                 "SELECT * FROM users WHERE user_id = ?", (user_id,)
             ).fetchone()
-            return dict(row) if row else None
+            return StoredUser.coerce(dict(row)) if row else None
 
-    def get_primary_targets(self) -> List[dict]:
+    def get_primary_targets(self) -> List[PrimaryTarget]:
         try:
             with self._read_connection() as conn:
                 rows = conn.execute("""
@@ -274,7 +284,7 @@ class SQLiteReadPathMixin:
                     LEFT JOIN chats c ON t.chat_id = c.chat_id
                     ORDER BY t.author_name ASC
                 """).fetchall()
-                return [dict(row) for row in rows]
+                return [PrimaryTarget.coerce(dict(row)) for row in rows]
         except sqlite3.OperationalError as e:
             if "no such table" in str(e):
                 return []
@@ -305,7 +315,7 @@ class SQLiteReadPathMixin:
             ).fetchall()
             return [self._row_to_message(row) for row in rows]
 
-    def get_user_export_summary(self, user_id: int) -> Optional[dict]:
+    def get_user_export_summary(self, user_id: int) -> Optional[UserExportSummary]:
         with self._read_connection() as conn:
             count_row = conn.execute(
                 """
@@ -357,14 +367,14 @@ class SQLiteReadPathMixin:
                 (user_id, user_id),
             ).fetchone()
 
-            return {
-                "message_count": int(message_count),
-                "first_message_id": first_row["message_id"],
-                "last_message_id": last_row["message_id"],
-                "first_timestamp": first_row["timestamp"],
-                "last_timestamp": last_row["timestamp"],
-                "target_author_name": author_row["author_name"] if author_row else None,
-            }
+            return UserExportSummary(
+                message_count=int(message_count),
+                first_message_id=first_row["message_id"],
+                last_message_id=last_row["message_id"],
+                first_timestamp=first_row["timestamp"],
+                last_timestamp=last_row["timestamp"],
+                target_author_name=author_row["author_name"] if author_row else None,
+            )
 
     def iter_user_export_rows(self, user_id: int, chunk_size: int = 1000):
         started_at = perf_counter()
@@ -399,7 +409,7 @@ class SQLiteReadPathMixin:
                         break
                     for row in rows:
                         yielded += 1
-                        yield dict(row)
+                        yield UserExportRow.coerce(dict(row))
             finally:
                 telemetry.track_counter("storage.iter_user_export_rows.calls", 1)
                 telemetry.track_counter("storage.iter_user_export_rows.rows", yielded)
@@ -407,7 +417,7 @@ class SQLiteReadPathMixin:
                     "storage.iter_user_export_rows.total", perf_counter() - started_at
                 )
 
-    def get_user_export_rows(self, user_id: int) -> List[dict]:
+    def get_user_export_rows(self, user_id: int) -> List[UserExportRow]:
         with self._read_connection() as conn:
             rows = conn.execute(
                 """
@@ -431,9 +441,11 @@ class SQLiteReadPathMixin:
             """,
                 (user_id,),
             ).fetchall()
-            return [dict(row) for row in rows]
+            return [UserExportRow.coerce(dict(row)) for row in rows]
 
-    def get_target_message_breakdown(self, chat_id: int, target_id: int) -> dict:
+    def get_target_message_breakdown(
+        self, chat_id: int, target_id: int
+    ) -> TargetMessageBreakdown:
         with self._read_connection() as conn:
             row = conn.execute(
                 """
@@ -452,15 +464,15 @@ class SQLiteReadPathMixin:
             own_messages = (
                 row["own_messages"] if row and row["own_messages"] is not None else 0
             )
-            return {
-                "own_messages": own_messages,
-                "with_context": total_linked,
-            }
+            return TargetMessageBreakdown(
+                own_messages=own_messages,
+                with_context=total_linked,
+            )
 
-    def get_retry_tasks(self) -> List[dict]:
+    def get_retry_tasks(self) -> List[RetryTaskRecord]:
         now = int(datetime.now().timestamp())
         with self._read_connection() as conn:
             rows = conn.execute(
                 "SELECT * FROM retry_queue WHERE next_retry_timestamp <= ?", (now,)
             ).fetchall()
-            return [dict(row) for row in rows]
+            return [RetryTaskRecord.coerce(dict(row)) for row in rows]

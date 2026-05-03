@@ -3,14 +3,32 @@ import logging
 from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Optional, Any, Set, List, Dict, Awaitable, Callable, AsyncIterator
+from ..core.models.service_payloads import (
+    ExportDialogScanStartedPayload,
+    ExportDialogSearchScanningPayload,
+    ExportDialogSearchStartedPayload,
+    ExportGlobalExportFinishedPayload,
+    ExportSyncFinishedPayload,
+    ExportSyncProgressPayload,
+    ExportSyncStartedPayload,
+    ExportSyncSummaryPayload,
+    ExportTargetedDialogSearchStartedPayload,
+    ExportTrackedUpdateStartedPayload,
+)
+from ..core.models.sync_report import TrackedSyncUserStat
+from ..core.models.sync_report import TrackedSyncRunReport
 from ..core.telegram.interface import TelegramClientInterface
-from ..core.service_events import ServiceEventSink, emit_service_event
+from ..core.service_events import ExportEvents, ServiceEventSink, emit_service_event
 from ..infrastructure.storage.interface import ExportStorage
+from ..infrastructure.storage.records import (
+    PrimaryTarget,
+    SyncStatus,
+    TargetMessageBreakdown,
+)
 from ..core.context import set_chat_id
 from ..core.telemetry import telemetry
 from .context_engine import DeepModeEngine
 from ..utils.ui import UI
-from ..i18n import _
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +52,70 @@ class _TrackedTargetPlan:
     effective_from_user_id: Optional[int]
     entity: Any
     current_max: int
-    target_status: Dict[str, Any]
+    target_status: SyncStatus
     last_msg_id: int
     is_complete: bool
     prefetched_messages: Optional[List[Any]] = None
     prefetched_head_complete: bool = False
+
+
+@dataclass
+class _SyncTargetContext:
+    chat_id: int
+    chat_title: str
+    uid: int
+    status: SyncStatus
+    api_from_user: Optional[Any]
+    local_sender_filter_id: Optional[int]
+    active_deep: bool
+    active_depth: int
+    head_id: int
+    tail_id: int
+    is_complete: bool
+    header_payload: ExportSyncStartedPayload
+
+
+@dataclass(frozen=True)
+class _ScanRange:
+    upper: int
+    lower: int
+    role: str
+
+
+@dataclass(frozen=True)
+class _ScanRangeResult:
+    processed: int
+    tail_id: Optional[int]
+    head_id: int
+    head_scan_complete: bool
+    tail_scan_complete: bool
+    upper: int
+    lower: int
+    role: str
+
+    @classmethod
+    def coerce(cls, value: Any) -> "_ScanRangeResult":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, dict):
+            return cls(
+                processed=int(value.get("processed", 0)),
+                tail_id=value.get("tail_id", value.get("tail")),
+                head_id=int(value.get("head_id", value.get("head", 0))),
+                head_scan_complete=bool(value.get("head_scan_complete", False)),
+                tail_scan_complete=bool(value.get("tail_scan_complete", False)),
+                upper=int(value["upper"]),
+                lower=int(value["lower"]),
+                role=str(value.get("role", "TAIL")),
+            )
+        raise TypeError(f"Unsupported scan range result payload: {type(value)!r}")
+
+
+@dataclass()
+class _SyncProgressStats:
+    processed: int = 0
+    skipped: int = 0
+    linked: int = 0
 
 
 class ExportService:
@@ -73,19 +150,19 @@ class ExportService:
         lower_id: int,
         parts: int,
         role: str,
-    ) -> List[Dict[str, int]]:
+    ) -> List[_ScanRange]:
         if upper_id < lower_id or upper_id <= 0 or parts <= 0:
             return []
 
         total = upper_id - lower_id + 1
         step = max(1, (total + parts - 1) // parts)
-        ranges: List[Dict[str, int]] = []
+        ranges: List[_ScanRange] = []
         current_upper = upper_id
 
         while current_upper >= lower_id:
             current_lower = max(lower_id, current_upper - step + 1)
             ranges.append(
-                {"upper": current_upper, "lower": current_lower, "role": role}
+                _ScanRange(upper=current_upper, lower=current_lower, role=role)
             )
             current_upper = current_lower - 1
 
@@ -100,21 +177,21 @@ class ExportService:
         limit: Optional[int] = None,
         history_workers: int = 4,
         allow_history: bool = True,
-    ) -> List[Dict[str, int]]:
+    ) -> List[_ScanRange]:
         if current_max <= 0:
             return []
 
         first_full_sync = head_id <= 0 and tail_id <= 0 and not is_complete
         if limit is not None:
             if current_max > head_id and head_id > 0:
-                return [{"upper": current_max, "lower": head_id + 1, "role": "HEAD"}]
+                return [_ScanRange(upper=current_max, lower=head_id + 1, role="HEAD")]
             history_upper = (
                 current_max
                 if first_full_sync
                 else (tail_id - 1 if tail_id > 0 else head_id - 1)
             )
             if allow_history and history_upper >= 1 and not is_complete:
-                return [{"upper": history_upper, "lower": 1, "role": "TAIL"}]
+                return [_ScanRange(upper=history_upper, lower=1, role="TAIL")]
             return []
 
         if first_full_sync and allow_history:
@@ -122,9 +199,9 @@ class ExportService:
                 current_max, 1, history_workers, "TAIL"
             )
 
-        ranges: List[Dict[str, int]] = []
+        ranges: List[_ScanRange] = []
         if current_max > head_id and head_id > 0:
-            ranges.append({"upper": current_max, "lower": head_id + 1, "role": "HEAD"})
+            ranges.append(_ScanRange(upper=current_max, lower=head_id + 1, role="HEAD"))
 
         if allow_history and not is_complete:
             history_upper = tail_id - 1 if tail_id > 0 else head_id - 1
@@ -137,14 +214,14 @@ class ExportService:
 
         if not ranges and current_max > head_id:
             ranges.append(
-                {"upper": current_max, "lower": max(1, head_id + 1), "role": "HEAD"}
+                _ScanRange(upper=current_max, lower=max(1, head_id + 1), role="HEAD")
             )
 
         return ranges
 
     @staticmethod
     def _resolve_tail_progress_checkpoint(
-        tail_results: List[Dict[str, Any]],
+        tail_results: List[Any],
     ) -> Optional[int]:
         """
         Resolve the lowest contiguous history point we can safely checkpoint.
@@ -158,14 +235,18 @@ class ExportService:
         if not tail_results:
             return None
 
-        ordered = sorted(tail_results, key=lambda item: item["upper"], reverse=True)
+        ordered = sorted(
+            (_ScanRangeResult.coerce(result) for result in tail_results),
+            key=lambda item: item.upper,
+            reverse=True,
+        )
         checkpoint = None
         for result in ordered:
-            if result.get("tail_scan_complete"):
-                checkpoint = result["lower"]
+            if result.tail_scan_complete:
+                checkpoint = result.lower
                 continue
 
-            tail_cursor = result.get("tail")
+            tail_cursor = result.tail_id
             if tail_cursor is not None:
                 checkpoint = tail_cursor
             break
@@ -177,15 +258,17 @@ class ExportService:
         *,
         chat_title: str,
         user_label: str,
-        mode_str: str,
-        status_str: str,
-    ) -> Dict[str, str]:
-        return {
-            "chat_title": chat_title,
-            "user_label": user_label,
-            "mode_str": mode_str,
-            "status_str": status_str,
-        }
+        active_deep: bool,
+        active_depth: int,
+        status_kind: Optional[str],
+    ) -> ExportSyncStartedPayload:
+        return ExportSyncStartedPayload(
+            chat_title=chat_title,
+            user_label=user_label,
+            deep_mode=active_deep,
+            depth=active_depth if active_deep else 0,
+            status_kind=status_kind,
+        )
 
     async def _prepare_sync_target(
         self,
@@ -197,7 +280,7 @@ class ExportService:
         force_resync: bool,
         resume_history: bool,
         resolve_user_entity: bool,
-    ) -> Dict[str, Any]:
+    ) -> _SyncTargetContext:
         chat_id = getattr(entity, "id", 0)
         chat_title = UI.format_name(entity)
         set_chat_id(chat_id)
@@ -208,7 +291,7 @@ class ExportService:
         uid = from_user_id or chat_id
         target_name = chat_title
         user_label = ""
-        status = self.storage.get_sync_status(chat_id, uid)
+        status = SyncStatus.coerce(self.storage.get_sync_status(chat_id, uid))
         api_from_user = from_user_id
         local_sender_filter_id = None
 
@@ -231,11 +314,11 @@ class ExportService:
                     api_from_user = None
                     local_sender_filter_id = from_user_id
             else:
-                target_name = status.get("author_name") or str(from_user_id)
+                target_name = status.author_name or str(from_user_id)
                 user_label = target_name
 
-        saved_deep = bool(status.get("deep_mode", 0))
-        saved_depth = status.get("recursive_depth", 0)
+        saved_deep = status.deep_mode
+        saved_depth = status.recursive_depth
         active_deep = deep_mode or saved_deep
         active_depth = (
             recursive_depth
@@ -243,9 +326,9 @@ class ExportService:
             else (saved_depth if saved_depth > 0 else 2)
         )
 
-        head_id = 0 if force_resync else status["last_msg_id"]
-        tail_id = 0 if force_resync else status["tail_msg_id"]
-        is_complete = 0 if force_resync else status["is_complete"]
+        head_id = 0 if force_resync else status.last_msg_id
+        tail_id = 0 if force_resync else status.tail_msg_id
+        is_complete = False if force_resync else status.is_complete
 
         self.storage.register_target(
             uid,
@@ -258,51 +341,53 @@ class ExportService:
         if active_deep:
             self.context_engine.reset()
 
-        mode_str = f"DEEP (Depth {active_depth})" if active_deep else "FLAT"
-        status_str = ""
+        status_kind = None
         if resume_history and tail_id > 0 and not is_complete:
-            status_str = _("text_resuming_history")
+            status_kind = "resuming_history"
         elif head_id > 0:
-            status_str = _("text_updating")
+            status_kind = "updating"
 
-        return {
-            "chat_id": chat_id,
-            "chat_title": chat_title,
-            "uid": uid,
-            "status": status,
-            "api_from_user": api_from_user,
-            "local_sender_filter_id": local_sender_filter_id,
-            "active_deep": active_deep,
-            "active_depth": active_depth,
-            "head_id": head_id,
-            "tail_id": tail_id,
-            "is_complete": is_complete,
-            "mode_str": mode_str,
-            "header_payload": self._build_sync_header_payload(
+        return _SyncTargetContext(
+            chat_id=chat_id,
+            chat_title=chat_title,
+            uid=uid,
+            status=status,
+            api_from_user=api_from_user,
+            local_sender_filter_id=local_sender_filter_id,
+            active_deep=active_deep,
+            active_depth=active_depth,
+            head_id=head_id,
+            tail_id=tail_id,
+            is_complete=is_complete,
+            header_payload=self._build_sync_header_payload(
                 chat_title=chat_title,
                 user_label=user_label,
-                mode_str=mode_str,
-                status_str=status_str,
+                active_deep=active_deep,
+                active_depth=active_depth,
+                status_kind=status_kind,
             ),
-        }
+        )
 
     def _apply_sync_scan_results(
         self,
         *,
         chat_id: int,
         uid: int,
-        results: List[Dict[str, Any]],
+        results: List[Any],
         tail_range_count: int,
         is_complete: bool,
     ) -> None:
-        completed_heads = [r["upper"] for r in results if r.get("head_scan_complete")]
+        scan_results = [_ScanRangeResult.coerce(result) for result in results]
+        completed_heads = [
+            result.upper for result in scan_results if result.head_scan_complete
+        ]
         if completed_heads:
             self.storage.update_last_msg_id(chat_id, uid, max(completed_heads))
             telemetry.track_counter("sync.head_ranges_completed", len(completed_heads))
 
-        tail_results = [r for r in results if r["role"] == "TAIL"]
+        tail_results = [result for result in scan_results if result.role == "TAIL"]
         completed_tails = [
-            r["lower"] for r in tail_results if r.get("tail_scan_complete")
+            result.lower for result in tail_results if result.tail_scan_complete
         ]
         tail_progress = self._resolve_tail_progress_checkpoint(tail_results)
         if tail_progress is not None:
@@ -318,10 +403,12 @@ class ExportService:
         if tail_range_count > 1:
             if len(completed_tails) == tail_range_count:
                 self.storage.update_sync_tail(chat_id, uid, 0, is_complete=True)
-                self._emit_event("export.history_fully_synced")
+                self._emit_event(ExportEvents.HISTORY_FULLY_SYNCED)
             return
 
-        tails = [r["tail"] for r in tail_results if r["tail"] is not None]
+        tails = [
+            result.tail_id for result in tail_results if result.tail_id is not None
+        ]
         min_tail = None
         if completed_tails:
             min_tail = min(completed_tails)
@@ -329,7 +416,7 @@ class ExportService:
             min_tail = min(tails)
         if min_tail is not None and min_tail <= 10:
             self.storage.update_sync_tail(chat_id, uid, 0, is_complete=True)
-            self._emit_event("export.history_fully_synced")
+            self._emit_event(ExportEvents.HISTORY_FULLY_SYNCED)
 
     def _resolve_new_target_link_ids(
         self,
@@ -397,7 +484,7 @@ class ExportService:
         role: str,
         can_checkpoint_tail: bool,
         worker_state: _ScanWorkerState,
-        progress_stats: Dict[str, int],
+        progress_stats: _SyncProgressStats,
         draw_status: Callable[[str], Awaitable[None]],
     ) -> None:
         if not worker_state.batch:
@@ -408,7 +495,7 @@ class ExportService:
         telemetry.track_duration(
             "sync.flat_batch_save.total", perf_counter() - batch_started
         )
-        progress_stats["linked"] += len(worker_state.batch)
+        progress_stats.linked += len(worker_state.batch)
         telemetry.track_counter("sync.flat_batches", 1)
         telemetry.track_counter("sync.flat_messages", len(worker_state.batch))
         self._checkpoint_worker_progress(
@@ -431,7 +518,7 @@ class ExportService:
         role: str,
         can_checkpoint_tail: bool,
         worker_state: _ScanWorkerState,
-        progress_stats: Dict[str, int],
+        progress_stats: _SyncProgressStats,
         context_window: int,
         max_cluster: int,
         active_depth: int,
@@ -450,7 +537,7 @@ class ExportService:
             recursive_depth=active_depth,
             on_progress=draw_status,
         )
-        progress_stats["linked"] += saved_count
+        progress_stats.linked += saved_count
         telemetry.track_counter("sync.deep_batches", 1)
         telemetry.track_counter("sync.deep_messages", batch_size_now)
         self._checkpoint_worker_progress(
@@ -478,7 +565,7 @@ class ExportService:
         context_batch_size: int,
         can_checkpoint_tail: bool,
         worker_state: _ScanWorkerState,
-        progress_stats: Dict[str, int],
+        progress_stats: _SyncProgressStats,
         draw_status: Callable[[str], Awaitable[None]],
     ) -> None:
         if not worker_state.scan_buffer:
@@ -493,8 +580,8 @@ class ExportService:
         for msg_data in worker_state.scan_buffer:
             is_new = msg_data.message_id in missing_ids
             if not is_new and not force_resync:
-                progress_stats["skipped"] += 1
-                if progress_stats["skipped"] % 100 == 0:
+                progress_stats.skipped += 1
+                if progress_stats.skipped % 100 == 0:
                     await draw_status()
                 continue
 
@@ -516,7 +603,7 @@ class ExportService:
                         recursive_depth=active_depth,
                         on_progress=lambda: draw_status(f"(ID: {msg_data.message_id})"),
                     )
-                    progress_stats["linked"] += saved_count
+                    progress_stats.linked += saved_count
                     telemetry.track_counter("sync.deep_batches", 1)
                     telemetry.track_counter(
                         "sync.deep_messages", len(worker_state.context_batch)
@@ -527,7 +614,7 @@ class ExportService:
                 worker_state.batch.append(msg_data)
 
             worker_state.processed += 1
-            progress_stats["processed"] += 1
+            progress_stats.processed += 1
 
             if role == "TAIL":
                 worker_state.tail_id = msg_data.message_id
@@ -559,9 +646,7 @@ class ExportService:
         self,
         *,
         entity: Any,
-        upper_id: int,
-        lower_id: int,
-        role: str,
+        scan_range: _ScanRange,
         chat_id: int,
         uid: int,
         head_id: int,
@@ -580,13 +665,13 @@ class ExportService:
         can_checkpoint_tail: bool,
         prefetched_messages: Optional[List[Any]],
         prefetched_head_complete: bool,
-        progress_stats: Dict[str, int],
+        progress_stats: _SyncProgressStats,
         draw_status: Callable[[str], Awaitable[None]],
-    ) -> Dict[str, Any]:
+    ) -> _ScanRangeResult:
         worker_state = _ScanWorkerState(head_id=head_id)
 
         prefetched_iter = None
-        if role == "HEAD" and prefetched_messages is not None:
+        if scan_range.role == "HEAD" and prefetched_messages is not None:
             telemetry.track_counter("sync.prefetched_head.used", 1)
             prefetched_iter = prefetched_messages
 
@@ -594,7 +679,7 @@ class ExportService:
             message_stream = self.client.iter_messages(
                 entity,
                 limit=single_worker_limit,
-                offset_id=upper_id + 1,
+                offset_id=scan_range.upper + 1,
                 from_user=api_from_user,
             )
         else:
@@ -604,10 +689,10 @@ class ExportService:
             if self.storage.should_stop():
                 break
 
-            if msg_data.message_id < lower_id:
-                if role == "HEAD" and single_worker_limit is None:
+            if msg_data.message_id < scan_range.lower:
+                if scan_range.role == "HEAD" and single_worker_limit is None:
                     worker_state.head_scan_complete = True
-                if role == "TAIL" and single_worker_limit is None:
+                if scan_range.role == "TAIL" and single_worker_limit is None:
                     worker_state.tail_scan_complete = True
                 break
 
@@ -620,7 +705,7 @@ class ExportService:
 
             if (
                 not force_resync
-                and role == "TAIL"
+                and scan_range.role == "TAIL"
                 and tail_id > 0
                 and tail_id < msg_data.message_id <= head_id
             ):
@@ -631,7 +716,7 @@ class ExportService:
                     entity=entity,
                     chat_id=chat_id,
                     uid=uid,
-                    role=role,
+                    role=scan_range.role,
                     force_resync=force_resync,
                     active_deep=active_deep,
                     active_depth=active_depth,
@@ -646,14 +731,14 @@ class ExportService:
                 )
 
         if (
-            role == "HEAD"
+            scan_range.role == "HEAD"
             and single_worker_limit is None
             and not self.storage.should_stop()
             and (prefetched_iter is None or prefetched_head_complete)
         ):
             worker_state.head_scan_complete = True
         if (
-            role == "TAIL"
+            scan_range.role == "TAIL"
             and single_worker_limit is None
             and not self.storage.should_stop()
         ):
@@ -663,7 +748,7 @@ class ExportService:
             entity=entity,
             chat_id=chat_id,
             uid=uid,
-            role=role,
+            role=scan_range.role,
             force_resync=force_resync,
             active_deep=active_deep,
             active_depth=active_depth,
@@ -681,7 +766,7 @@ class ExportService:
                 entity=entity,
                 chat_id=chat_id,
                 uid=uid,
-                role=role,
+                role=scan_range.role,
                 can_checkpoint_tail=can_checkpoint_tail,
                 worker_state=worker_state,
                 progress_stats=progress_stats,
@@ -693,23 +778,23 @@ class ExportService:
         await self._flush_flat_worker_batch(
             chat_id=chat_id,
             uid=uid,
-            role=role,
+            role=scan_range.role,
             can_checkpoint_tail=can_checkpoint_tail,
             worker_state=worker_state,
             progress_stats=progress_stats,
             draw_status=draw_status,
         )
 
-        return {
-            "processed": worker_state.processed,
-            "tail": worker_state.tail_id,
-            "head": worker_state.head_id,
-            "head_scan_complete": worker_state.head_scan_complete,
-            "tail_scan_complete": worker_state.tail_scan_complete,
-            "upper": upper_id,
-            "lower": lower_id,
-            "role": role,
-        }
+        return _ScanRangeResult(
+            processed=worker_state.processed,
+            tail_id=worker_state.tail_id,
+            head_id=worker_state.head_id,
+            head_scan_complete=worker_state.head_scan_complete,
+            tail_scan_complete=worker_state.tail_scan_complete,
+            upper=scan_range.upper,
+            lower=scan_range.lower,
+            role=scan_range.role,
+        )
 
     async def _prefetch_chat_head_messages(
         self,
@@ -784,13 +869,13 @@ class ExportService:
         *,
         chat_id: int,
         target_id: int,
-        status_cache: Dict[tuple[int, int], Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        status_cache: Dict[tuple[int, int], SyncStatus],
+    ) -> SyncStatus:
         status_key = (chat_id, target_id)
         status = status_cache.get(status_key)
         if status is None:
             loaded = self.storage.get_sync_status(chat_id, target_id)
-            status = loaded if isinstance(loaded, dict) else {}
+            status = SyncStatus.coerce(loaded)
             status_cache[status_key] = status
         return status
 
@@ -801,7 +886,7 @@ class ExportService:
         entity_cache: Dict[int, Any],
         current_max_cache: Dict[int, int],
         shared_prefetch_cache: Dict[int, tuple[List[Any], bool]],
-        status_cache: Dict[tuple[int, int], Dict[str, Any]],
+        status_cache: Dict[tuple[int, int], SyncStatus],
     ) -> None:
         for chat_id, target_ids in items_by_chat.items():
             user_targets = [
@@ -828,13 +913,8 @@ class ExportService:
                     target_id=target_id,
                     status_cache=status_cache,
                 )
-                last_msg_id = status.get("last_msg_id", 0)
-                if (
-                    isinstance(current_max, int)
-                    and isinstance(last_msg_id, int)
-                    and last_msg_id > 0
-                    and current_max > last_msg_id
-                ):
+                last_msg_id = status.last_msg_id
+                if last_msg_id > 0 and current_max > last_msg_id:
                     lower_bounds.append(last_msg_id + 1)
 
             if len(lower_bounds) < 2:
@@ -853,7 +933,7 @@ class ExportService:
         entity_cache: Dict[int, Any],
         current_max_cache: Dict[int, int],
         shared_prefetch_cache: Dict[int, tuple[List[Any], bool]],
-        status_cache: Dict[tuple[int, int], Dict[str, Any]],
+        status_cache: Dict[tuple[int, int], SyncStatus],
     ) -> Optional[_TrackedTargetPlan]:
         chat_id, from_user_id = self._normalize_target_item(item)
         entity = await self._get_or_load_entity(
@@ -872,10 +952,8 @@ class ExportService:
             target_id=from_user_id,
             status_cache=status_cache,
         )
-        last_msg_id = target_status.get("last_msg_id", 0)
-        if not isinstance(last_msg_id, int):
-            last_msg_id = 0
-        is_complete = bool(target_status.get("is_complete", 0))
+        last_msg_id = target_status.last_msg_id
+        is_complete = target_status.is_complete
 
         effective_from_user_id = None if from_user_id == chat_id else from_user_id
         prefetched_messages = None
@@ -902,12 +980,10 @@ class ExportService:
         self,
         *,
         from_user_id: int,
-        target_status: Dict[str, Any],
+        target_status: SyncStatus,
     ) -> str:
-        name = target_status.get("author_name") or f"ID:{from_user_id}"
-        if not target_status.get("author_name") or target_status.get(
-            "author_name"
-        ).startswith("ID:"):
+        name = target_status.author_name or f"ID:{from_user_id}"
+        if not target_status.author_name or target_status.author_name.startswith("ID:"):
             user_info = self.storage.get_user(from_user_id)
             if user_info:
                 first = user_info.get("first_name") or ""
@@ -918,21 +994,19 @@ class ExportService:
     def _ensure_user_stats_entry(
         self,
         *,
-        user_stats: Dict[int, Dict[str, Any]],
+        user_stats: TrackedSyncRunReport,
         from_user_id: int,
-        target_status: Dict[str, Any],
+        target_status: SyncStatus,
     ) -> None:
         if from_user_id in user_stats:
             return
 
-        user_stats[from_user_id] = {
-            "name": self._resolve_target_report_name(
+        user_stats[from_user_id] = TrackedSyncUserStat(
+            name=self._resolve_target_report_name(
                 from_user_id=from_user_id,
                 target_status=target_status,
             ),
-            "count": 0,
-            "dirty": False,
-        }
+        )
 
     async def sync_chat(
         self,
@@ -965,16 +1039,18 @@ class ExportService:
             resume_history=resume_history,
             resolve_user_entity=resolve_user_entity,
         )
-        chat_id = sync_ctx["chat_id"]
-        uid = sync_ctx["uid"]
-        api_from_user = sync_ctx["api_from_user"]
-        local_sender_filter_id = sync_ctx["local_sender_filter_id"]
-        active_deep = sync_ctx["active_deep"]
-        active_depth = sync_ctx["active_depth"]
-        head_id = sync_ctx["head_id"]
-        tail_id = sync_ctx["tail_id"]
-        is_complete = sync_ctx["is_complete"]
-        self._emit_event("export.sync_chat_started", **sync_ctx["header_payload"])
+        chat_id = sync_ctx.chat_id
+        uid = sync_ctx.uid
+        api_from_user = sync_ctx.api_from_user
+        local_sender_filter_id = sync_ctx.local_sender_filter_id
+        active_deep = sync_ctx.active_deep
+        active_depth = sync_ctx.active_depth
+        head_id = sync_ctx.head_id
+        tail_id = sync_ctx.tail_id
+        is_complete = sync_ctx.is_complete
+        self._emit_event(
+            ExportEvents.SYNC_CHAT_STARTED, **sync_ctx.header_payload.as_dict()
+        )
 
         # 5. Determine Scan Boundaries
         # Get the latest message to determine current max
@@ -995,7 +1071,7 @@ class ExportService:
             limit=limit,
             allow_history=resume_history or force_resync,
         )
-        tail_range_count = sum(1 for item in ranges if item["role"] == "TAIL")
+        tail_range_count = sum(1 for item in ranges if item.role == "TAIL")
         can_checkpoint_tail = tail_range_count <= 1
 
         if not ranges:
@@ -1013,14 +1089,17 @@ class ExportService:
         initial_db_total = self.storage.get_message_count(chat_id, target_id=uid)
 
         async def draw_status(extra=""):
-            db_total = initial_db_total + progress_stats["linked"]
-            self._emit_event(
-                "export.sync_progress",
+            db_total = initial_db_total + progress_stats.linked
+            payload = ExportSyncProgressPayload(
                 db_total=db_total,
                 extra=extra,
             )
+            self._emit_event(
+                ExportEvents.SYNC_PROGRESS,
+                **payload.as_dict(),
+            )
 
-        progress_stats = {"processed": 0, "skipped": 0, "linked": 0}
+        progress_stats = _SyncProgressStats()
 
         async def draw_status_loop():
             """Periodic UI updates to avoid terminal lag."""
@@ -1036,9 +1115,7 @@ class ExportService:
                 *[
                     self._scan_range(
                         entity=entity,
-                        upper_id=r["upper"],
-                        lower_id=r["lower"],
-                        role=r["role"],
+                        scan_range=scan_range,
                         chat_id=chat_id,
                         uid=uid,
                         head_id=head_id,
@@ -1060,10 +1137,10 @@ class ExportService:
                         progress_stats=progress_stats,
                         draw_status=draw_status,
                     )
-                    for r in ranges
+                    for scan_range in ranges
                 ]
             )
-            total_processed = sum(r["processed"] for r in results)
+            total_processed = sum(result.processed for result in results)
             self._apply_sync_scan_results(
                 chat_id=chat_id,
                 uid=uid,
@@ -1084,8 +1161,11 @@ class ExportService:
 
         # 4. Final summary
         db_count = self.storage.get_message_count(chat_id, target_id=uid)
-        breakdown = self.storage.get_target_message_breakdown(chat_id, uid)
-        self._emit_event("export.sync_finished", db_count=db_count)
+        breakdown = TargetMessageBreakdown.coerce(
+            self.storage.get_target_message_breakdown(chat_id, uid)
+        )
+        finished_payload = ExportSyncFinishedPayload(db_count=db_count)
+        self._emit_event(ExportEvents.SYNC_FINISHED, **finished_payload.as_dict())
 
         # Only mark a target as freshly synced after a non-interrupted pass.
         if not self.storage.should_stop():
@@ -1093,8 +1173,8 @@ class ExportService:
         elapsed_seconds = perf_counter() - sync_started
         telemetry.track_duration("sync.chat.total", elapsed_seconds)
         telemetry.track_counter("sync.chat.processed_messages", total_processed)
-        telemetry.track_counter("sync.chat.linked_messages", progress_stats["linked"])
-        telemetry.track_counter("sync.chat.skipped_messages", progress_stats["skipped"])
+        telemetry.track_counter("sync.chat.linked_messages", progress_stats.linked)
+        telemetry.track_counter("sync.chat.skipped_messages", progress_stats.skipped)
         logger.info(
             "Chat sync complete",
             extra={
@@ -1103,8 +1183,8 @@ class ExportService:
                     "chat_id": chat_id,
                     "target_id": uid,
                     "processed": total_processed,
-                    "linked": progress_stats["linked"],
-                    "skipped": progress_stats["skipped"],
+                    "linked": progress_stats.linked,
+                    "skipped": progress_stats.skipped,
                     "mode": "deep" if active_deep else "flat",
                     "depth": active_depth if active_deep else 0,
                     "elapsed_seconds": round(elapsed_seconds, 3),
@@ -1113,11 +1193,14 @@ class ExportService:
             },
         )
         if emit_summary:
-            self._emit_event(
-                "export.sync_summary",
+            summary_payload = ExportSyncSummaryPayload(
                 title=UI.format_name(entity),
-                own_messages=breakdown["own_messages"],
-                with_context=breakdown["with_context"],
+                own_messages=breakdown.own_messages,
+                with_context=breakdown.with_context,
+            )
+            self._emit_event(
+                ExportEvents.SYNC_SUMMARY,
+                **summary_payload.as_dict(),
             )
 
         return total_processed
@@ -1138,10 +1221,13 @@ class ExportService:
         """
         if target_chat_ids:
             started_at = perf_counter()
-            self._emit_event(
-                "export.targeted_dialog_search_started",
+            targeted_payload = ExportTargetedDialogSearchStartedPayload(
                 from_user_id=from_user_id,
                 dialog_count=len(target_chat_ids),
+            )
+            self._emit_event(
+                ExportEvents.TARGETED_DIALOG_SEARCH_STARTED,
+                **targeted_payload.as_dict(),
             )
             # Resolve specific entities from IDs/usernames
             targets = []
@@ -1162,7 +1248,13 @@ class ExportService:
                     logger.warning(f"Could not resolve config chat {cid}: {e}")
         else:
             started_at = perf_counter()
-            self._emit_event("export.dialog_search_started", from_user_id=from_user_id)
+            search_started_payload = ExportDialogSearchStartedPayload(
+                from_user_id=from_user_id
+            )
+            self._emit_event(
+                ExportEvents.DIALOG_SEARCH_STARTED,
+                **search_started_payload.as_dict(),
+            )
             dialogs = await self.client.get_dialogs()
             # Filter for groups and supergroups only
             targets = [
@@ -1172,18 +1264,24 @@ class ExportService:
                 and not getattr(d.entity, "broadcast", False)
             ]
 
-        self._emit_event("export.dialog_search_scanning", dialog_count=len(targets))
+        scanning_payload = ExportDialogSearchScanningPayload(dialog_count=len(targets))
+        self._emit_event(
+            ExportEvents.DIALOG_SEARCH_SCANNING, **scanning_payload.as_dict()
+        )
 
         total_processed = 0
 
         for i, dialog in enumerate(targets):
             try:
                 dialog_title = UI.format_name(dialog)
-                self._emit_event(
-                    "export.dialog_scan_started",
+                scan_started_payload = ExportDialogScanStartedPayload(
                     index=i + 1,
                     total=len(targets),
                     dialog_title=dialog_title,
+                )
+                self._emit_event(
+                    ExportEvents.DIALOG_SCAN_STARTED,
+                    **scan_started_payload.as_dict(),
                 )
 
                 processed = await self.sync_chat(
@@ -1205,8 +1303,12 @@ class ExportService:
                     f"Error scanning dialog {getattr(dialog, 'name', 'Unknown')}: {e}"
                 )
 
+        global_finished_payload = ExportGlobalExportFinishedPayload(
+            total_processed=total_processed
+        )
         self._emit_event(
-            "export.global_export_finished", total_processed=total_processed
+            ExportEvents.GLOBAL_EXPORT_FINISHED,
+            **global_finished_payload.as_dict(),
         )
         telemetry.track_counter("sync.dialogs.scanned", len(targets))
         telemetry.track_duration(
@@ -1214,29 +1316,40 @@ class ExportService:
         )
         return total_processed
 
-    async def sync_all_outdated(self, threshold_seconds: int = 86400) -> dict:
+    async def sync_all_outdated(
+        self, threshold_seconds: int = 86400
+    ) -> TrackedSyncRunReport:
         """Runs synchronization for all chats that haven't been updated in a while or are incomplete."""
         outdated = self.storage.get_outdated_chats(threshold_seconds=threshold_seconds)
         return await self._sync_target_items(outdated)
 
-    async def sync_all_tracked(self) -> dict:
+    async def sync_all_tracked(self) -> TrackedSyncRunReport:
         """Runs synchronization for every tracked primary target."""
         targets = self.storage.get_primary_targets()
-        items = [(item["chat_id"], item["user_id"]) for item in targets]
+        items = [
+            (target.chat_id, target.user_id)
+            for target in (PrimaryTarget.coerce(item) for item in targets)
+        ]
         return await self._sync_target_items(items)
 
-    async def _sync_target_items(self, items: list) -> dict:
+    async def _sync_target_items(self, items: list) -> TrackedSyncRunReport:
         """Synchronize a list of target tuples in `(chat_id, user_id)` form."""
-        user_stats = {}  # user_id -> {"name": str, "count": int, "dirty": bool}
+        user_stats = TrackedSyncRunReport()
         entity_cache: Dict[int, Any] = {}
         current_max_cache: Dict[int, int] = {}
         shared_prefetch_cache: Dict[int, tuple[List[Any], bool]] = {}
-        status_cache: Dict[tuple[int, int], Dict[str, Any]] = {}
+        status_cache: Dict[tuple[int, int], SyncStatus] = {}
 
         if not items:
             return user_stats
 
-        self._emit_event("export.tracked_update_started", target_count=len(items))
+        tracked_update_payload = ExportTrackedUpdateStartedPayload(
+            target_count=len(items)
+        )
+        self._emit_event(
+            ExportEvents.TRACKED_UPDATE_STARTED,
+            **tracked_update_payload.as_dict(),
+        )
 
         started_at = perf_counter()
         telemetry.track_counter("sync.tracked_items.total", len(items))
@@ -1294,9 +1407,9 @@ class ExportService:
                 from_user_id=plan.from_user_id,
                 target_status=plan.target_status,
             )
-            user_stats[plan.from_user_id]["count"] += processed
+            user_stats[plan.from_user_id].count += processed
             if processed > 0:
-                user_stats[plan.from_user_id]["dirty"] = True
+                user_stats[plan.from_user_id].dirty = True
                 telemetry.track_counter("sync.tracked_items.changed", 1)
 
         telemetry.track_duration("sync.all_tracked.total", perf_counter() - started_at)

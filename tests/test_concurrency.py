@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tg_msg_manager.core.process import ProcessManager
+from tg_msg_manager.infrastructure.storage.records import RetryTaskRecord
 from tg_msg_manager.infrastructure.storage.sqlite import SQLiteStorage
 
 
@@ -70,11 +71,17 @@ class TestConcurrency(unittest.TestCase):
     def test_retry_queue_persistence(self):
         storage = SQLiteStorage(self.db_path)
         storage.enqueue_retry_task("task1", 123, "export", "Timeout")
+        with storage._write_transaction() as conn:
+            conn.execute(
+                "UPDATE retry_queue SET next_retry_timestamp = 0 WHERE task_id = ?",
+                ("task1",),
+            )
 
         # Verify retrieved
-        storage.get_retry_tasks()
-        # Note: default next_retry is +300s, so for the test we might need a custom timestamp
-        # But wait, I'll just check if it's in the DB at all for this basic test.
+        tasks = storage.get_retry_tasks()
+        self.assertEqual(len(tasks), 1)
+        self.assertIsInstance(tasks[0], RetryTaskRecord)
+        self.assertEqual(tasks[0].chat_id, 123)
         with storage._get_connection() as conn:
             row = conn.execute(
                 "SELECT * FROM retry_queue WHERE task_id = 'task1'"

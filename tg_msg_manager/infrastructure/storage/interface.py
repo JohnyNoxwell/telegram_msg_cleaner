@@ -2,6 +2,16 @@ from abc import ABC, abstractmethod
 from typing import Iterable, List, Optional, Protocol, runtime_checkable
 
 from ...core.models.message import MessageData
+from .records import (
+    DeleteUserDataResult,
+    PrimaryTarget,
+    StoredUser,
+    SyncStatus,
+    SyncUser,
+    TargetMessageBreakdown,
+    UserExportRow,
+    UserExportSummary,
+)
 
 
 @runtime_checkable
@@ -64,24 +74,24 @@ class MessageReadStorage(Protocol):
 
 @runtime_checkable
 class UserReadStorage(Protocol):
-    def get_unique_sync_users(self) -> List[dict]:
+    def get_unique_sync_users(self) -> List[SyncUser]:
         """Returns distinct users present in storage."""
 
-    def get_user(self, user_id: int) -> Optional[dict]:
+    def get_user(self, user_id: int) -> Optional[StoredUser]:
         """Returns stored user metadata."""
 
     def get_user_messages(self, user_id: int) -> List[MessageData]:
         """Returns all messages linked to a target user."""
 
-    def get_user_export_summary(self, user_id: int) -> Optional[dict]:
+    def get_user_export_summary(self, user_id: int) -> Optional[UserExportSummary]:
         """Returns deterministic summary metadata for exports when available."""
 
     def iter_user_export_rows(
         self, user_id: int, chunk_size: int = 1000
-    ) -> Iterable[dict]:
+    ) -> Iterable[UserExportRow]:
         """Streams export rows in deterministic order."""
 
-    def get_user_export_rows(self, user_id: int) -> List[dict]:
+    def get_user_export_rows(self, user_id: int) -> List[UserExportRow]:
         """Returns materialized export rows for legacy callers/backends."""
 
 
@@ -90,7 +100,9 @@ class TargetLinkReadStorage(Protocol):
     def has_target_link(self, chat_id: int, message_id: int, target_id: int) -> bool:
         """Returns True when a message is already linked to a target."""
 
-    def get_target_message_breakdown(self, chat_id: int, target_id: int) -> dict:
+    def get_target_message_breakdown(
+        self, chat_id: int, target_id: int
+    ) -> TargetMessageBreakdown:
         """Returns linked-message totals for the target in a chat."""
 
 
@@ -109,7 +121,7 @@ class TargetRegistryStorage(Protocol):
     ) -> None:
         """Registers or refreshes a tracked sync target."""
 
-    def get_primary_targets(self) -> List[dict]:
+    def get_primary_targets(self) -> List[PrimaryTarget]:
         """Returns manually registered sync targets."""
 
     def upsert_user(
@@ -130,7 +142,7 @@ class TargetRegistryStorage(Protocol):
 
 @runtime_checkable
 class SyncStateStorage(Protocol):
-    def get_sync_status(self, chat_id: int, user_id: int) -> dict:
+    def get_sync_status(self, chat_id: int, user_id: int) -> SyncStatus:
         """Returns sync state for a tracked chat/target pair."""
 
     def get_outdated_chats(self, threshold_seconds: int) -> List[tuple[int, int]]:
@@ -153,7 +165,7 @@ class CleanupStorage(Protocol):
     def delete_messages(self, chat_id: int, message_ids: List[int]) -> int:
         """Deletes specific messages from storage."""
 
-    def delete_user_data(self, user_id: int) -> tuple[int, int]:
+    def delete_user_data(self, user_id: int) -> DeleteUserDataResult:
         """Deletes all locally stored data for a target user."""
 
 
@@ -255,11 +267,11 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    def get_unique_sync_users(self) -> List[dict]:
+    def get_unique_sync_users(self) -> List[SyncUser]:
         pass
 
     @abstractmethod
-    def get_user(self, user_id: int) -> Optional[dict]:
+    def get_user(self, user_id: int) -> Optional[StoredUser]:
         pass
 
     @abstractmethod
@@ -267,25 +279,27 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    def get_user_export_summary(self, user_id: int) -> Optional[dict]:
+    def get_user_export_summary(self, user_id: int) -> Optional[UserExportSummary]:
         pass
 
     @abstractmethod
     def iter_user_export_rows(
         self, user_id: int, chunk_size: int = 1000
-    ) -> Iterable[dict]:
+    ) -> Iterable[UserExportRow]:
         pass
 
     @abstractmethod
-    def get_user_export_rows(self, user_id: int) -> List[dict]:
+    def get_user_export_rows(self, user_id: int) -> List[UserExportRow]:
         pass
 
     @abstractmethod
-    def get_target_message_breakdown(self, chat_id: int, target_id: int) -> dict:
+    def get_target_message_breakdown(
+        self, chat_id: int, target_id: int
+    ) -> TargetMessageBreakdown:
         pass
 
     @abstractmethod
-    def delete_user_data(self, user_id: int) -> tuple[int, int]:
+    def delete_user_data(self, user_id: int) -> DeleteUserDataResult:
         pass
 
     @abstractmethod
@@ -303,7 +317,7 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    def get_primary_targets(self) -> List[dict]:
+    def get_primary_targets(self) -> List[PrimaryTarget]:
         pass
 
     @abstractmethod
@@ -318,7 +332,7 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    def get_sync_status(self, chat_id: int, user_id: int) -> dict:
+    def get_sync_status(self, chat_id: int, user_id: int) -> SyncStatus:
         pass
 
     @abstractmethod

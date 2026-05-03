@@ -7,8 +7,16 @@ from datetime import datetime, timedelta
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tg_msg_manager.core.models.service_payloads import (
+    ExportDialogScanStartedPayload,
+    ExportDialogSearchScanningPayload,
+    ExportDialogSearchStartedPayload,
+    ExportGlobalExportFinishedPayload,
+    ExportTrackedUpdateStartedPayload,
+)
 from tg_msg_manager.infrastructure.storage.sqlite import SQLiteStorage
 from tg_msg_manager.services.exporter import ExportService
+from tg_msg_manager.core.models.sync_report import TrackedSyncRunReport
 
 
 class TestSyncSystem(unittest.IsolatedAsyncioTestCase):
@@ -122,6 +130,7 @@ class TestSyncSystem(unittest.IsolatedAsyncioTestCase):
 
         stats = await service.sync_all_tracked()
 
+        self.assertIsInstance(stats, TrackedSyncRunReport)
         self.assertFalse(stats[200]["dirty"])
         self.assertEqual(stats[200]["count"], 0)
         self.assertTrue(stats[999]["dirty"])
@@ -319,7 +328,11 @@ class TestSyncSystem(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(stats[222]["dirty"])
 
     async def test_sync_all_dialogs_for_user_emits_bulk_search_events(self):
-        dialog_entity = MagicMock(id=200, title="Tracked Chat", broadcast=False)
+        dialog_entity = type(
+            "DialogEntity",
+            (),
+            {"id": 200, "title": "Tracked Chat", "broadcast": False},
+        )()
         dialog = MagicMock(is_group=True, is_channel=False, entity=dialog_entity)
         self.mock_client.get_dialogs = AsyncMock(return_value=[dialog])
         events = []
@@ -341,7 +354,14 @@ class TestSyncSystem(unittest.IsolatedAsyncioTestCase):
                 "export.global_export_finished",
             ],
         )
-        self.assertEqual(events[-1].payload["total_processed"], 3)
+        search_started = ExportDialogSearchStartedPayload.coerce(events[0].payload)
+        scanning = ExportDialogSearchScanningPayload.coerce(events[1].payload)
+        scan_started = ExportDialogScanStartedPayload.coerce(events[2].payload)
+        finished = ExportGlobalExportFinishedPayload.coerce(events[3].payload)
+        self.assertEqual(search_started.from_user_id, 999)
+        self.assertEqual(scanning.dialog_count, 1)
+        self.assertEqual(scan_started.dialog_title, "Tracked Chat")
+        self.assertEqual(finished.total_processed, 3)
 
     async def test_sync_all_tracked_emits_update_started_event(self):
         self.storage.get_primary_targets = MagicMock(
@@ -367,7 +387,8 @@ class TestSyncSystem(unittest.IsolatedAsyncioTestCase):
         await service.sync_all_tracked()
 
         self.assertEqual(events[0].name, "export.tracked_update_started")
-        self.assertEqual(events[0].payload["target_count"], 1)
+        payload = ExportTrackedUpdateStartedPayload.coerce(events[0].payload)
+        self.assertEqual(payload.target_count, 1)
 
 
 if __name__ == "__main__":

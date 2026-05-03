@@ -189,3 +189,139 @@
 - [x] Block C.2.1 Keep runtime behavior unchanged by using structural typing instead of rewriting `SQLiteStorage`.
 - [x] Block C.3 Add regression coverage that `SQLiteStorage` satisfies the service-specific runtime protocols.
   Current delta: `interface.py` now exposes focused protocols such as `CleanerStorage`, `ContextStorage`, `DBExportStorage`, `PrivateArchiveStorage`, and `ExportStorage`; service constructors depend on those narrower contracts instead of the monolithic storage type, while `SQLiteStorage` remains a compatible umbrella backend and is verified against the new runtime-checkable protocols.
+
+## Phase 9: Runtime Bootstrap And Path Injection
+
+- [x] Remove the package-level `settings` singleton from the main execution path and bootstrap runtime state explicitly in CLI entrypoints.
+- [x] Introduce `AppRuntime` / `AppPaths` so project root, DB path, lock path, export dirs, and Python executable live in one composition object.
+- [x] Inject runtime settings and paths into `CLIContext`, `TelethonClientWrapper`, `DBExportService`, `PrivateArchiveService`, and `CleanerService`.
+- [x] Remove `cwd` / `./.venv-test` assumptions from scheduler and alias setup flows.
+- [x] Add regression coverage for runtime path resolution and runtime-aware CLI initialization.
+  Current delta: `cli.py` now builds an explicit `AppRuntime`, `core/runtime.py` centralizes path resolution, relative DB/config paths are resolved from a declared project root, `CleanerService.purge_user_data()` scans injected artifact roots instead of hardcoded directories, `DBExportService` and `PrivateArchiveService` receive explicit output roots, and alias/scheduler setup now use the active runtime executable instead of a baked-in venv path.
+
+## Phase 10: CLI Presentation Extraction
+
+- [x] Move raw TTY input handling out of `cli.py` into a dedicated CLI I/O module.
+- [x] Move service-event rendering out of `cli.py` while preserving the existing terminal behavior.
+- [x] Move target-list, update-summary, pause, and main-menu rendering helpers out of `cli.py`.
+- [x] Re-run CLI and service tests after the extraction to keep behavior stable.
+  Current delta: `tg_msg_manager/cli_io.py` now owns terminal input and all extracted presentation helpers, while `cli.py` stays focused on runtime wiring and command/menu orchestration instead of mixing that with low-level rendering.
+
+## Phase 11: Typed Storage Read Records
+
+- [x] Introduce typed read-side storage records for sync status, tracked targets, sync users, and export summaries.
+- [x] Keep record instances backward-compatible with existing `dict`-style access during the migration window.
+- [x] Convert SQLite read-path methods to return typed records instead of raw `dict` payloads.
+- [x] Update `ExportService`, `DBExportService`, and CLI target rendering to consume typed attributes on the hot paths.
+- [x] Add regression coverage for typed record returns while preserving legacy index access in tests.
+  Current delta: storage read models now flow through `SyncStatus`, `PrimaryTarget`, `SyncUser`, and `UserExportSummary` in `infrastructure/storage/records.py`; SQLite and the main export/CLI paths consume typed attributes, while `__getitem__`/`get()` compatibility keeps older tests and mocks working during the transition.
+
+## Phase 12: Named Service Events And Renderer Registry
+
+- [x] Introduce named service-event constants instead of duplicating raw event-name strings across services and CLI rendering.
+- [x] Convert exporter, cleaner, and private-archive services to emit those named events.
+- [x] Replace the monolithic `render_service_event()` conditional chain with an event-to-renderer registry.
+- [x] Re-run event-heavy service and sync tests to confirm the refactor preserved emitted event names and CLI behavior.
+  Current delta: `core/service_events.py` now owns `ExportEvents`, `CleanerEvents`, and `PrivateArchiveEvents`, service emitters reference those constants directly, and `cli_io.py` routes events through a renderer registry instead of a long sequence of string comparisons.
+
+## Phase 13: Typed Export Sync Context
+
+- [x] Replace the internal `sync_chat()` prep context `dict` with a dedicated dataclass so checkpoint, mode, and header state travel together.
+- [x] Keep the external behavior and emitted payloads unchanged while removing internal string-key lookups from the hot sync path.
+- [x] Re-run exporter and tracked-sync tests after the context conversion.
+  Current delta: `ExportService._prepare_sync_target()` now returns a `_SyncTargetContext` dataclass instead of a loose mapping, which trims internal key-string plumbing in `sync_chat()` without changing the public service API or event payload shape.
+
+## Phase 14: Context-Local I18N Runtime
+
+- [x] Replace module-global language state with a context-local language holder so concurrent tasks stop sharing one mutable locale flag.
+- [x] Add a normalized `lang` setting with legacy aliases so runtime language can be declared in config/env without extra glue code.
+- [x] Bind CLI entrypoints to the runtime language context before parser/help rendering and command execution.
+- [x] Add regression coverage for language normalization, context restoration, task-local isolation, and runtime-to-CLI language propagation.
+  Current delta: `i18n.py` now uses a `ContextVar` plus `use_lang()` instead of a plain module global, `Settings` accepts `lang` / `language` / `ui_language`, and `run_cli()` / `main_menu()` execute inside the runtime language scope so parser/help strings and handlers stay locale-consistent per invocation.
+
+## Phase 15: Typed Tracked Sync Report Stats
+
+- [x] Replace loose `user_stats` dict payloads in tracked sync flows with a typed per-user report object.
+- [x] Keep CLI summary rendering and dirty-target filtering backward-compatible during the transition by coercing legacy dict-shaped mocks.
+- [x] Re-run tracked-sync and CLI tests after the report-object conversion.
+  Current delta: tracked update summaries now flow through `TrackedSyncUserStat` in `core/models/sync_report.py`; `ExportService`, `get_dirty_target_ids()`, and `print_update_summary()` use typed attributes internally while preserving legacy index access for existing tests and mocks.
+
+## Phase 16: Typed Export Event Payloads
+
+- [x] Replace string-oriented `sync_chat_started` payload construction in `ExportService` with a typed DTO that carries semantic fields instead of pre-rendered UI strings.
+- [x] Move mode/status text rendering for export-start events fully into `cli_io.py` so localization stays on the presentation side.
+- [x] Replace loose sync-summary payload assembly with a typed DTO and validate the payload shape in service tests.
+- [x] Re-run export service and tracked-sync tests after the event-payload conversion.
+  Current delta: `ExportService` now emits `ExportSyncStartedPayload` and `ExportSyncSummaryPayload` from `core/models/service_payloads.py`; `cli_io.py` derives localized badges/text from semantic fields like `deep_mode`, `depth`, and `status_kind`, so the service layer no longer injects translated `mode_str` / `status_str` strings into event payloads.
+
+## Phase 17: Structured Setup And PM Archive Results
+
+- [x] Replace `AliasManager.install()` stringly/localized result dicts with a structured install result model.
+- [x] Move alias success/error/help text rendering fully into CLI code so `AliasManager` stops depending on `_()` directly.
+- [x] Replace loose PM archive context/event payload dict assembly with typed models where the service was still passing raw mappings around.
+- [x] Add regression coverage for structured alias-install results and typed PM archive event payloads.
+  Current delta: `AliasManager` now returns `AliasInstallResult` / `AliasHelpEntry` from `core/models/setup.py` instead of localized dict blobs, CLI setup rendering owns the translation step, `PrivateArchiveService` uses a typed `_ArchiveContext` plus typed event DTOs from `core/models/service_payloads.py`, and tests cover both the new alias result contract and PM archive payload shapes.
+
+## Phase 18: Structured Scheduler Setup Flow
+
+- [x] Split scheduler setup into a typed request/result contract so the service stops reading input and printing terminal output directly.
+- [x] Move schedule prompt parsing and success/error rendering into CLI handlers.
+- [x] Add scheduler executor tests for plist generation, launchctl failure handling, and request validation.
+- [x] Add CLI wiring coverage that `schedule` passes a typed request into the scheduler service.
+  Current delta: `services/scheduler.py` now takes `SchedulerSetupRequest` and returns `SchedulerSetupResult` from `core/models/setup.py`, scheduler side effects are wrapped behind a pure executor boundary, and CLI owns both prompt parsing and localized result rendering for `schedule`.
+
+## Phase 19: Typed Bulk Event Rendering Contracts
+
+- [x] Add typed payload DTOs for the remaining bulk export, sync progress/finish, and cleaner dialog events that `cli_io.py` still parsed as raw dicts.
+- [x] Convert `ExportService` and `CleanerService` emitters to construct those DTOs before firing service events.
+- [x] Convert `cli_io.py` renderers to coerce typed payloads instead of indexing untyped dicts.
+- [x] Extend cleaner and sync-system tests to validate the new payload shapes on emitted events.
+  Current delta: the remaining bulk/event-rendering hotspots now flow through typed payloads in `core/models/service_payloads.py` such as `ExportSyncProgressPayload`, `ExportDialogScanStartedPayload`, `ExportTrackedUpdateStartedPayload`, and `CleanerDialogMessagesFoundPayload`; `cli_io.py` no longer manually unpacks those event dicts, and the corresponding cleaner/bulk-sync tests assert the typed contracts.
+
+## Phase 20: Typed Export Scan State
+
+- [x] Replace internal scan-range dicts in `ExportService` with dedicated typed range objects.
+- [x] Replace per-range scan result dicts with a typed result contract and keep a narrow coercion shim for legacy tests.
+- [x] Replace shared sync progress counters with a typed progress-state object instead of a mutable string-key dict.
+- [x] Re-run exporter and sync-system coverage after the scan-state conversion.
+  Current delta: `ExportService` now threads `_ScanRange`, `_ScanRangeResult`, and `_SyncProgressStats` through `sync_chat()` and its worker helpers, which removes the remaining `\"upper\"` / `\"lower\"` / `\"linked\"` string-key plumbing from the hot scan path while preserving checkpoint behavior and legacy unit-test compatibility at the private coercion boundary.
+
+## Phase 21: Typed Tracked Sync Run Report
+
+- [x] Replace bare tracked-sync result dicts with a dedicated report object that owns per-user stats.
+- [x] Keep CLI helpers and tests compatible by giving the report a map-like surface plus coercion from legacy dict payloads.
+- [x] Update `ExportService.sync_all_tracked()` / `sync_all_outdated()` and summary helpers to speak the typed report contract.
+- [x] Re-run CLI and tracked-sync tests after the report-object conversion.
+  Current delta: tracked bulk-update flows now return `TrackedSyncRunReport` from `core/models/sync_report.py` instead of a raw `dict`; the report owns dirty-target filtering and total-processed aggregation, while `cli.py`, `cli_io.py`, and older tests remain compatible through the report's coercion and mapping-style accessors.
+
+## Phase 22: Typed Private Archive Stats
+
+- [x] Replace PM archive media and transfer counter dicts with dedicated typed stats models.
+- [x] Update private-archive payload DTOs to carry typed stats instead of nested raw mappings.
+- [x] Move CLI archive summaries off string-key dict indexing onto typed attributes while preserving payload coercion compatibility.
+- [x] Re-run PM archive service coverage after the stats-model conversion.
+  Current delta: `PrivateArchiveMediaStats` and `PrivateArchiveTransferStats` now back the PM archive flow in `core/models/service_payloads.py`, `services/private_archive.py` mutates typed counters directly, and `cli_io.py` renders archive progress/final summaries from typed attributes rather than `\"Photo\"` / `\"downloaded\"` key lookups.
+
+## Phase 23: Typed User Metadata And Export Rows
+
+- [x] Replace raw `get_user()` dict payloads with a dedicated stored-user record.
+- [x] Replace export-row iterator/materialization payloads with a typed row record while keeping mapping-style compatibility for legacy code.
+- [x] Rewire SQLite read-path interfaces and `DBExportService` to coerce legacy backends onto the new typed records.
+- [x] Re-run storage and export-adjacent tests after the record conversion.
+  Current delta: `StoredUser` and `UserExportRow` now live in `infrastructure/storage/records.py`, `UserReadStorage` advertises typed user/export-row contracts, SQLite read helpers return those records directly, and `DBExportService` consumes typed rows while still accepting legacy dict-shaped backends through coercion wrappers.
+
+## Phase 24: Typed Breakdown And Purge Results
+
+- [x] Replace linked-message breakdown dicts with a dedicated typed record on the storage read path.
+- [x] Replace `delete_user_data()` tuple returns with a typed purge result while keeping tuple coercion compatibility in services.
+- [x] Update `ExportService` and `CleanerService` to consume those typed results without breaking legacy mocks.
+- [x] Re-run storage, exporter, and cleaner coverage after the contract conversion.
+  Current delta: `TargetMessageBreakdown` and `DeleteUserDataResult` now live in `infrastructure/storage/records.py`, SQLite returns those records directly for breakdown/purge calls, `ExportService` coerces breakdowns before summary emission, and `CleanerService` now works against a typed purge result while remaining compatible with older tuple-shaped storage mocks.
+
+## Phase 25: Typed Maintenance Records
+
+- [x] Replace terminal-repair result dicts with a dedicated typed maintenance record.
+- [x] Replace retry-queue read results with typed retry-task records.
+- [x] Keep migration-friendly mapping-style access for existing tests while tightening the SQLite maintenance API.
+- [x] Re-run storage and concurrency coverage after the maintenance-record conversion.
+  Current delta: `TerminalRepairCandidate` and `RetryTaskRecord` now live in `infrastructure/storage/records.py`, SQLite maintenance helpers return those records directly, and the storage/concurrency tests now assert typed maintenance payloads instead of only raw DB rows.

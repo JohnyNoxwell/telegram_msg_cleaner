@@ -1,6 +1,38 @@
 All notable changes to this project will be documented in this file in both English and Russian.
 Все значимые изменения проекта фиксируются в этом файле на английском и русском языках.
 
+## [4.2.6] - 2026-05-03
+
+### Changed (EN)
+- **Runtime Bootstrap**: Replaced the implicit package-level runtime path assumptions with explicit `AppRuntime` / `AppPaths` composition so CLI entrypoints, storage paths, export roots, scheduler setup, and alias installation all resolve from one injected runtime object.
+- **CLI Presentation Boundary**: Moved raw TTY input, service-event rendering, target-list rendering, update summaries, and pause/menu helpers into `cli_io.py`, leaving `cli.py` focused on runtime wiring and command/menu orchestration.
+- **Typed Contracts Sweep**: Replaced the remaining loose dict/tuple payloads across tracked sync reports, service events, scheduler/alias setup results, storage read models, export rows, maintenance records, and PM archive stats with typed DTO/record models while preserving mapping-style compatibility where older tests still rely on it.
+- **Localized Runtime Context**: Switched i18n state to a `ContextVar`-backed runtime scope so CLI parsing, help text, and handlers stay bound to the invocation language instead of one mutable module-global flag.
+
+### Added (EN)
+- Added `PROJECT_ARCHITECTURE_OVERVIEW.md`, a full architecture handoff document describing the codebase structure, algorithms, operational flows, and known constraints for external analysis.
+- Added `scripts/export_user_context_from_db.py` for targeted context exports directly from SQLite when investigating one user and their related chat context offline.
+- Added regression coverage for runtime-aware CLI bootstrapping, typed alias/scheduler contracts, context-local i18n, typed storage read records, typed tracked-sync reports, and typed PM archive/export payloads.
+
+### Fixed (EN)
+- Fixed scheduler setup, alias installation, and local artifact cleanup flows so they no longer depend on the current working directory or a hardcoded local virtualenv path.
+- Fixed event/UI coupling by removing service-owned terminal rendering from the remaining export, cleaner, and PM archive flows, which reduces presentation leakage inside application services.
+
+### Изменения (RU)
+- **Runtime Bootstrap**: Неявные package-level предположения о путях и окружении заменены на явную композицию `AppRuntime` / `AppPaths`, так что CLI entrypoints, storage paths, export-директории, scheduler setup и установка алиасов теперь резолвятся из одного injected runtime object.
+- **Граница CLI Presentation**: Raw TTY input, рендер service-events, вывод списков целей, update-summary и menu/pause helpers вынесены в `cli_io.py`, а `cli.py` оставлен в роли слоя runtime wiring и command/menu orchestration.
+- **Переход на typed contracts**: Оставшиеся loose dict/tuple payloads в tracked sync reports, service events, результатах scheduler/alias setup, storage read models, export rows, maintenance records и PM archive stats заменены на typed DTO/record models с сохранением mapping-style совместимости там, где старые тесты еще на нее опираются.
+- **Локализованный runtime context**: Состояние i18n переведено на `ContextVar`-scope, чтобы CLI parsing, help-text и handlers были привязаны к языку конкретного запуска, а не к одной глобально мутируемой module-level переменной.
+
+### Добавлено (RU)
+- Добавлен `PROJECT_ARCHITECTURE_OVERVIEW.md` — полный handoff-документ по архитектуре, алгоритмам, operational flow и ограничениям проекта для внешнего анализа.
+- Добавлен `scripts/export_user_context_from_db.py` для точечных context-export выгрузок напрямую из SQLite при офлайн-разборе одной цели и связанных сообщений.
+- Добавлено regression-покрытие для runtime-aware CLI bootstrapping, typed alias/scheduler contracts, context-local i18n, typed storage read records, typed tracked-sync reports и typed payloads в PM archive/export flows.
+
+### Исправления (RU)
+- Исправлены scheduler setup, установка алиасов и очистка локальных артефактов: эти сценарии больше не зависят от текущей рабочей директории или захардкоженного пути к локальному virtualenv.
+- Исправлена связность между event/UI-слоем и сервисами: из оставшихся export/cleaner/PM archive flows убран сервисный terminal rendering, что уменьшает presentation leakage внутри application services.
+
 ## [4.2.5] - 2026-04-27
 
 ### Changed (EN)

@@ -1,8 +1,18 @@
+import os
 import logging
-from typing import List, Set, Any, Optional, Tuple
+from typing import List, Set, Any, Optional, Tuple, Sequence
+from ..core.models.service_payloads import (
+    CleanerDialogMessagesFoundPayload,
+    CleanerDialogScanStartedPayload,
+)
 from ..core.telegram.interface import TelegramClientInterface
 from ..infrastructure.storage.interface import CleanerStorage
-from ..core.service_events import ServiceEventSink, emit_service_event
+from ..infrastructure.storage.records import DeleteUserDataResult
+from ..core.service_events import (
+    CleanerEvents,
+    ServiceEventSink,
+    emit_service_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +31,14 @@ class CleanerService:
         storage: CleanerStorage,
         whitelist: Set[Any] = None,
         include_list: Set[Any] = None,
+        artifact_roots: Optional[Sequence[str]] = None,
         event_sink: ServiceEventSink = None,
     ):
         self.client = client
         self.storage = storage
         self.whitelist = whitelist or set()
         self.include_list = include_list or set()
+        self.artifact_roots = list(artifact_roots or [])
         self.event_sink = event_sink
 
     def _require_client(self):
@@ -143,12 +155,15 @@ class CleanerService:
         dry_run: bool,
     ) -> Tuple[int, int]:
         name = self._dialog_display_name(dialog)
-        self._emit_event(
-            "cleaner.dialog_scan_started",
+        scan_started = CleanerDialogScanStartedPayload(
             index=index,
             total=total,
             name=name,
             chat_id=getattr(dialog, "id", 0),
+        )
+        self._emit_event(
+            CleanerEvents.DIALOG_SCAN_STARTED,
+            **scan_started.as_dict(),
         )
         logger.info(f"Scanning chat {dialog.id} ({name}) for your messages...")
 
@@ -156,11 +171,14 @@ class CleanerService:
         if not my_msg_ids:
             return 0, 0
 
-        self._emit_event(
-            "cleaner.dialog_messages_found",
+        found_payload = CleanerDialogMessagesFoundPayload(
             name=name,
             chat_id=getattr(dialog, "id", 0),
             count=len(my_msg_ids),
+        )
+        self._emit_event(
+            CleanerEvents.DIALOG_MESSAGES_FOUND,
+            **found_payload.as_dict(),
         )
         deleted_count = await self.delete_chat_messages(
             dialog.entity, my_msg_ids, dry_run=dry_run
@@ -273,14 +291,22 @@ class CleanerService:
         """
         Completely removes all user data from the database and deletes associated export files.
         """
-        import os
-
         # 1. Clear database
-        msg_count, target_count = self.storage.delete_user_data(user_id)
-        logger.info(f"Purged {msg_count} messages from DB for user {user_id}")
+        purge_result = DeleteUserDataResult.coerce(
+            self.storage.delete_user_data(user_id)
+        )
+        msg_count = purge_result.deleted_messages
+        target_count = purge_result.deleted_targets
+        logger.info(
+            f"Purged {msg_count} messages and {target_count} targets from DB for user {user_id}"
+        )
 
         # 2. Clear filesystem
-        dirs_to_scan = ["PUBLIC_GROUPS", "PRIVAT_DIALOGS", "DB_EXPORTS"]
+        dirs_to_scan = self.artifact_roots or [
+            "PUBLIC_GROUPS",
+            "PRIVAT_DIALOGS",
+            "DB_EXPORTS",
+        ]
         deleted_count = 0
         pattern = f"_{user_id}"
 

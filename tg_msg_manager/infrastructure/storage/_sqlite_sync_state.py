@@ -2,11 +2,15 @@ import logging
 import time
 from typing import List, Optional
 
+from .records import DeleteUserDataResult, TerminalRepairCandidate
+
 logger = logging.getLogger(__name__)
 
 
 class SQLiteSyncStateMixin:
-    def repair_terminal_incomplete_targets(self, tail_threshold: int = 1) -> List[dict]:
+    def repair_terminal_incomplete_targets(
+        self, tail_threshold: int = 1
+    ) -> List[TerminalRepairCandidate]:
         """
         Reconcile sync targets that are logically complete at the bottom of history
         but still carry a stale `is_complete = 0` flag from older interrupted flows.
@@ -31,7 +35,7 @@ class SQLiteSyncStateMixin:
                 """,
                 (tail_threshold,),
             ).fetchall()
-            repaired = [dict(row) for row in rows]
+            repaired = [TerminalRepairCandidate.coerce(dict(row)) for row in rows]
             if repaired:
                 conn.execute(
                     """
@@ -81,7 +85,7 @@ class SQLiteSyncStateMixin:
 
     def get_last_target_msg_id(self, chat_id: int, user_id: int) -> int:
         status = self.get_sync_status(chat_id, user_id)
-        return status["last_msg_id"]
+        return status.last_msg_id
 
     def upsert_user(
         self,
@@ -185,7 +189,7 @@ class SQLiteSyncStateMixin:
             )
             return res.rowcount
 
-    def delete_user_data(self, user_id: int) -> tuple[int, int]:
+    def delete_user_data(self, user_id: int) -> DeleteUserDataResult:
         with self._write_transaction() as conn:
             conn.execute(
                 "DELETE FROM message_target_links WHERE target_user_id = ?", (user_id,)
@@ -199,8 +203,13 @@ class SQLiteSyncStateMixin:
                 )
             """)
             deleted_msgs = res.rowcount
-            conn.execute("DELETE FROM sync_targets WHERE user_id = ?", (user_id,))
-            return deleted_msgs, 0
+            target_res = conn.execute(
+                "DELETE FROM sync_targets WHERE user_id = ?", (user_id,)
+            )
+            return DeleteUserDataResult(
+                deleted_messages=deleted_msgs,
+                deleted_targets=target_res.rowcount,
+            )
 
     def enqueue_retry_task(
         self, task_id: str, chat_id: int, task_type: str, error: str

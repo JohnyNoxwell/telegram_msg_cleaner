@@ -15,6 +15,17 @@ from tg_msg_manager.infrastructure.storage.interface import (
     ExportStorage,
     PrivateArchiveStorage,
 )
+from tg_msg_manager.infrastructure.storage.records import (
+    DeleteUserDataResult,
+    PrimaryTarget,
+    RetryTaskRecord,
+    StoredUser,
+    SyncStatus,
+    TerminalRepairCandidate,
+    TargetMessageBreakdown,
+    UserExportRow,
+    UserExportSummary,
+)
 from tg_msg_manager.infrastructure.storage.sqlite import SQLiteStorage
 
 
@@ -187,7 +198,9 @@ class TestSQLiteStorage(unittest.IsolatedAsyncioTestCase):
 
         target_status = self.storage.get_sync_status(321, 999)
         author_status = self.storage.get_sync_status(321, 456)
+        self.assertIsInstance(target_status, SyncStatus)
         self.assertEqual(target_status["last_msg_id"], 50)
+        self.assertEqual(target_status.last_msg_id, 50)
         self.assertEqual(author_status["last_msg_id"], 0)
         self.assertEqual(len(self.storage.get_user_messages(999)), 1)
 
@@ -238,13 +251,25 @@ class TestSQLiteStorage(unittest.IsolatedAsyncioTestCase):
 
         await self.storage.save_messages(msgs, target_id=999)
 
+        user = self.storage.get_user(999)
         summary = self.storage.get_user_export_summary(999)
         rows = list(self.storage.iter_user_export_rows(999, chunk_size=2))
+        targets = self.storage.get_primary_targets()
 
+        self.assertIsInstance(user, StoredUser)
+        self.assertIsInstance(summary, UserExportSummary)
+        self.assertTrue(targets)
+        self.assertIsInstance(targets[0], PrimaryTarget)
+        self.assertIsInstance(rows[0], UserExportRow)
+        self.assertEqual(user.user_id, 999)
         self.assertEqual(summary["message_count"], 3)
+        self.assertEqual(summary.message_count, 3)
         self.assertEqual(summary["first_message_id"], 1)
         self.assertEqual(summary["last_message_id"], 3)
         self.assertEqual(summary["target_author_name"], "Target User")
+        self.assertEqual(targets[0].user_id, 999)
+        self.assertEqual(targets[0].user_msg_count, 2)
+        self.assertEqual(targets[0].context_msg_count, 1)
         self.assertEqual([row["message_id"] for row in rows], [1, 2, 3])
 
     async def test_register_target_preserves_last_sync_at_on_existing_target(self):
@@ -317,7 +342,9 @@ class TestSQLiteStorage(unittest.IsolatedAsyncioTestCase):
         repaired = self.storage.repair_terminal_incomplete_targets()
 
         self.assertEqual(len(repaired), 1)
+        self.assertIsInstance(repaired[0], TerminalRepairCandidate)
         self.assertEqual(repaired[0]["user_id"], 999)
+        self.assertEqual(repaired[0].user_id, 999)
 
         with self.storage._read_connection() as conn:
             repaired_row = conn.execute(
@@ -426,8 +453,49 @@ class TestSQLiteStorage(unittest.IsolatedAsyncioTestCase):
         await self.storage.save_message(own_msg, target_id=1)
         await self.storage.save_message(context_msg, target_id=1)
         breakdown = self.storage.get_target_message_breakdown(777, 1)
+        self.assertIsInstance(breakdown, TargetMessageBreakdown)
         self.assertEqual(breakdown["own_messages"], 1)
         self.assertEqual(breakdown["with_context"], 2)
+        self.assertEqual(breakdown.own_messages, 1)
+        self.assertEqual(breakdown.with_context, 2)
+
+    async def test_delete_user_data_returns_typed_result(self):
+        self.storage.register_target(1, "Target User", 777)
+        msg = MessageData(
+            message_id=1,
+            chat_id=777,
+            user_id=1,
+            author_name="Target User",
+            timestamp=datetime.now(),
+            text="Delete me",
+            media_type=None,
+            reply_to_id=None,
+            fwd_from_id=None,
+            context_group_id=None,
+            raw_payload={},
+        )
+
+        await self.storage.save_message(msg, target_id=1)
+        result = self.storage.delete_user_data(1)
+
+        self.assertIsInstance(result, DeleteUserDataResult)
+        self.assertEqual(result.deleted_messages, 1)
+        self.assertEqual(result.deleted_targets, 1)
+
+    async def test_get_retry_tasks_returns_typed_records(self):
+        self.storage.enqueue_retry_task("task1", 123, "export", "Timeout")
+        with self.storage._write_transaction() as conn:
+            conn.execute(
+                "UPDATE retry_queue SET next_retry_timestamp = 0 WHERE task_id = ?",
+                ("task1",),
+            )
+
+        tasks = self.storage.get_retry_tasks()
+
+        self.assertEqual(len(tasks), 1)
+        self.assertIsInstance(tasks[0], RetryTaskRecord)
+        self.assertEqual(tasks[0].task_id, "task1")
+        self.assertEqual(tasks[0].chat_id, 123)
 
     async def asyncTearDown(self):
         await self.storage.close()

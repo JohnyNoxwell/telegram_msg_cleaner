@@ -1,22 +1,44 @@
-# Текущий выбранный язык (по умолчанию русский)
-_CURRENT_LANG = "ru"
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Iterator, Optional
+
+DEFAULT_LANG = "ru"
+_CURRENT_LANG: ContextVar[str] = ContextVar(
+    "tg_msg_manager_current_lang", default=DEFAULT_LANG
+)
+
+
+def _normalize_lang(lang_code: Optional[str]) -> str:
+    if not lang_code:
+        return DEFAULT_LANG
+    normalized = str(lang_code).strip().lower()
+    if normalized in STRINGS:
+        return normalized
+    return DEFAULT_LANG
 
 
 def set_lang(lang_code: str):
-    global _CURRENT_LANG
-    if lang_code in STRINGS:
-        _CURRENT_LANG = lang_code
+    _CURRENT_LANG.set(_normalize_lang(lang_code))
 
 
 def get_lang() -> str:
-    return _CURRENT_LANG
+    return _normalize_lang(_CURRENT_LANG.get())
+
+
+@contextmanager
+def use_lang(lang_code: Optional[str]) -> Iterator[str]:
+    token = _CURRENT_LANG.set(_normalize_lang(lang_code))
+    try:
+        yield get_lang()
+    finally:
+        _CURRENT_LANG.reset(token)
 
 
 def _t(key: str, **kwargs) -> str:
     """Возвращает переведенную строку по ключу."""
-    lang_dict = STRINGS.get(_CURRENT_LANG, STRINGS["ru"])
+    lang_dict = STRINGS.get(get_lang(), STRINGS[DEFAULT_LANG])
     # Если ключа нет в текущем языке, пробуем русский как фолбэк
-    text = lang_dict.get(key, STRINGS["ru"].get(key, key))
+    text = lang_dict.get(key, STRINGS[DEFAULT_LANG].get(key, key))
     if kwargs:
         return text.format(**kwargs)
     return text
@@ -224,6 +246,10 @@ STRINGS = {
         "sched_daily_at": "ежедневно в {time}",
         "sched_every_x_hours": "каждые {hours} ч.",
         "sched_complete": "\nНастройка завершена!",
+        "sched_invalid_time": "Некорректный формат времени, использую 05:00.",
+        "sched_logs_path": "Логи: {path}",
+        "sched_register_error": "❌ Ошибка регистрации задачи: {error}",
+        "sched_unexpected_error": "❌ Непредвиденная ошибка: {error}",
         # Core
         "db_locked_waiting": "⚠️ База данных сессии заблокирована другим процессом. Ожидание {delay} сек... (Попытка {i}/{max})",
         "db_locked_error": "❌ Ошибка: База данных сессии остается заблокированной слишком долго.",
@@ -454,6 +480,10 @@ STRINGS = {
         "sched_daily_at": "daily at {time}",
         "sched_every_x_hours": "every {hours} hours",
         "sched_complete": "\nConfiguration complete!",
+        "sched_invalid_time": "Invalid time format, using 05:00.",
+        "sched_logs_path": "Logs: {path}",
+        "sched_register_error": "❌ Error registering task: {error}",
+        "sched_unexpected_error": "❌ Unexpected error: {error}",
         # Core
         "db_locked_waiting": "⚠️ Session database is locked by another process. Waiting {delay}s... (Attempt {i}/{max})",
         "db_locked_error": "❌ Error: Session database remains locked for too long.",

@@ -1,8 +1,10 @@
 import os
 import platform
+import sys
+import shlex
 import logging
-from typing import Dict, List
-from ..i18n import _
+from typing import List, Optional
+from ..core.models.setup import AliasHelpEntry, AliasInstallResult
 
 logger = logging.getLogger(__name__)
 
@@ -20,40 +22,49 @@ class AliasManager:
         "tge": "tg-msg-manager export",
         "tgu": "tg-msg-manager update",
     }
+    ALIAS_HELP = (
+        AliasHelpEntry("tg", "alias_tg"),
+        AliasHelpEntry("tgd", "alias_tgd"),
+        AliasHelpEntry("tgr", "alias_tgr"),
+        AliasHelpEntry("tgu", "alias_tgu"),
+        AliasHelpEntry("tge", "alias_tge"),
+        AliasHelpEntry("tgpm", "alias_tgpm"),
+    )
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        project_root: Optional[str] = None,
+        python_executable: Optional[str] = None,
+    ):
         self.os_type = platform.system()
         self.home_dir = os.path.expanduser("~")
+        self.project_root = os.path.abspath(project_root or os.getcwd())
+        self.python_executable = python_executable or sys.executable
 
-    def install(self) -> Dict[str, str]:
+    def install(self) -> AliasInstallResult:
         """
         Detects platform and performs installation.
-        Returns a dict with status information.
+        Returns a structured installation result for CLI rendering.
         """
         if self.os_type == "Windows":
             return self._install_windows()
         elif self.os_type in ("Linux", "Darwin"):  # Darwin is macOS
             return self._install_unix()
         else:
-            return {"error": _("setup_platform_error", plt=self.os_type)}
+            return AliasInstallResult(
+                success=False,
+                platform=self.os_type,
+                error_kind="unsupported_platform",
+            )
 
-    def _install_unix(self) -> Dict[str, str]:
+    def _install_unix(self) -> AliasInstallResult:
         """Adds aliases to .zshrc or .bashrc based on user template."""
         shell = os.environ.get("SHELL", "")
         rc_file = ".zshrc" if "zsh" in shell else ".bashrc"
         rc_path = os.path.join(self.home_dir, rc_file)
 
-        # Dynamically determine project root relative to this file
-        # This file is in tg_msg_manager/services/alias_manager.py
-        current_file_path = os.path.abspath(__file__)
-        project_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(current_file_path))
-        )
-
-        python_exe = "./.venv-test/bin/python3"
-
-        # User's proven template
-        template = "alias {alias}='cd \"{root}\" && {py} -m tg_msg_manager.cli {cmd}'"
+        template = 'alias {alias}="cd {root} && {py} -m tg_msg_manager.cli {cmd}"'
 
         commands = {
             "tg": "",
@@ -70,7 +81,10 @@ class AliasManager:
         lines_to_add = [f"\n{marker_start}\n"]
         for alias, cmd in commands.items():
             line = template.format(
-                alias=alias, root=project_root, py=python_exe, cmd=cmd
+                alias=alias,
+                root=shlex.quote(self.project_root),
+                py=shlex.quote(self.python_executable),
+                cmd=cmd,
             ).strip()
             lines_to_add.append(f"{line}\n")
         lines_to_add.append(f"{marker_end}\n")
@@ -92,14 +106,13 @@ class AliasManager:
                 f.write("\n")
             f.writelines(lines_to_add)
 
-        return {
-            "success": True,
-            "path": rc_path,
-            "message": _("setup_success_unix", path=rc_path),
-            "activate_cmd": _("setup_activate", path=rc_path),
-        }
+        return AliasInstallResult(
+            success=True,
+            platform=self.os_type,
+            rc_path=rc_path,
+        )
 
-    def _install_windows(self) -> Dict[str, str]:
+    def _install_windows(self) -> AliasInstallResult:
         """Creates .bat files in a dedicated bin directory."""
         bin_dir = os.path.join(self.home_dir, "tg_msg_bin")
         if not os.path.exists(bin_dir):
@@ -108,22 +121,18 @@ class AliasManager:
         for alias, cmd in self.ALIASES.items():
             bat_path = os.path.join(bin_dir, f"{alias}.bat")
             with open(bat_path, "w") as f:
-                f.write(f"@echo off\n{cmd} %*\n")
+                f.write(
+                    "@echo off\n"
+                    f'cd /d "{self.project_root}"\n'
+                    f'"{self.python_executable}" -m tg_msg_manager.cli {cmd} %*\n'
+                )
 
-        return {
-            "success": True,
-            "dir": bin_dir,
-            "message": _("setup_success_win", dir=bin_dir),
-        }
+        return AliasInstallResult(
+            success=True,
+            platform=self.os_type,
+            bin_dir=bin_dir,
+        )
 
-    def get_alias_help(self) -> List[str]:
-        """Returns localized descriptions of available aliases."""
-        return [
-            _("alias_header"),
-            f"  tg   -> {_('alias_tg')}",
-            f"  tgd  -> {_('alias_tgd')}",
-            f"  tgr  -> {_('alias_tgr')}",
-            f"  tgu  -> {_('alias_tgu')}",
-            f"  tge  -> {_('alias_tge')}",
-            f"  tgpm -> {_('alias_tgpm')}",
-        ]
+    def get_alias_specs(self) -> List[AliasHelpEntry]:
+        """Returns structured alias help entries for CLI-side localization."""
+        return list(self.ALIAS_HELP)
