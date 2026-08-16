@@ -8,6 +8,9 @@ Current active stage files:
 
 - none.
 
+Stage 7D.0 local self-message preservation during Telegram cleanup is recorded
+in [`reports/STAGE_7D_0_PRESERVE_LOCAL_SELF_MESSAGES_ON_CLEAN_REPORT.md`](reports/STAGE_7D_0_PRESERVE_LOCAL_SELF_MESSAGES_ON_CLEAN_REPORT.md).
+
 Stage completion policy: any stage that changes code or tests must run the
 same completion gate as `.github/workflows/ci.yml`. When CI runs `make verify`,
 local/stage completion must run `make verify`; focused checks do not replace

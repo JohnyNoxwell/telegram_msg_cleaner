@@ -1,4 +1,5 @@
 # Личные данные и сессии Telethon
+/Отслеживаемые боты из чата.md
 *.session
 *.session-shm
 *.session-wal

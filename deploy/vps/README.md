@@ -77,10 +77,13 @@ Launcher вызывает `/opt/tg-msg-manager/deploy/vps/tgm` с передан
 
 Расписание указано прямо в `OnCalendar` с timezone `Europe/Kyiv`; timezone всей VPS не меняется. `Persistent=true` не используется, поэтому пропущенные во время выключенного сервера запуски не выполняются при следующей загрузке.
 
-- `tg-msg-manager-update.timer`: каждый час ровно в `:00` по `Europe/Kyiv`.
-- `tg-msg-manager-clean.timer`: каждый день ровно в `04:30` по `Europe/Kyiv`.
+- `tg-msg-manager-update.timer`: каждые 10 минут по `Europe/Kyiv`.
+- `tg-msg-manager-clean.timer`: каждый день ровно в `04:35` по `Europe/Kyiv`.
 
-`tgd` является destructive-командой `clean --apply --yes`. Не запускайте clean service вручную для проверки.
+`tgd` является destructive-командой `clean --apply --yes`: она удаляет
+сообщения текущего аккаунта из Telegram, но сохраняет уже записанные сообщения
+и связи контекста в локальной SQLite. Не запускайте clean service вручную для
+проверки.
 
 Установка timers:
 

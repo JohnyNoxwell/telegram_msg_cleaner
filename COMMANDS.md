@@ -251,6 +251,26 @@ Notes:
 - Output is stored metadata facts only, not identity, profiling, OSINT, or
   behavioral analysis.
 
+## `clean`
+
+Delete messages authored by the current Telegram account from eligible groups
+and channels.
+
+Examples:
+
+```bash
+python3 -m tg_msg_manager.cli clean --dry-run
+python3 -m tg_msg_manager.cli clean --apply --yes
+```
+
+Notes:
+
+- Live cleanup removes matching messages from Telegram but preserves existing
+  SQLite message rows and target-context links for later local exports.
+- Dry-run does not delete Telegram or SQLite data.
+- Private dialogs are excluded from the direct CLI cleanup path, and whitelist
+  rules remain in effect.
+
 ## Interactive Menu
 
 The interactive `tg` menu uses this ordered two-digit mapping:

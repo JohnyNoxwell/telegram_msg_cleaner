@@ -76,7 +76,7 @@ class TestCleaner(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(count, 0)
         self.mock_client.delete_messages.assert_not_called()
 
-    async def test_live_deletion_and_purge(self):
+    async def test_live_deletion_preserves_local_storage(self):
         # 1. Setup DB with a message
         with self.storage._get_connection() as conn:
             conn.execute(
@@ -93,6 +93,7 @@ class TestCleaner(unittest.IsolatedAsyncioTestCase):
             conn.commit()
 
         cleaner = CleanerService(self.mock_client, self.storage)
+        self.storage.delete_messages = MagicMock(wraps=self.storage.delete_messages)
         self.mock_client.delete_messages.return_value = 1
 
         entity = MagicMock(id=777)
@@ -101,8 +102,8 @@ class TestCleaner(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(count, 1)
         self.mock_client.delete_messages.assert_called_once()
 
-        # Verify purged from DB
-        self.assertEqual(self.storage.get_message_count(777), 0)
+        self.storage.delete_messages.assert_not_called()
+        self.assertEqual(self.storage.get_message_count(777), 1)
 
     async def test_purge_user_data_preserves_summary_and_deletes_artifacts(self):
         artifact_root = self.enterContext(tempfile.TemporaryDirectory())

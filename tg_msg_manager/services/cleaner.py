@@ -217,12 +217,10 @@ class CleanerService:
         deleted_count = await self.client.delete_messages(entity, message_ids)
 
         if deleted_count > 0:
-            # 3. Update Storage
-            # We only remove from DB what was actually deleted from Telegram
-            # (In this simple wrapper, we assume all requested were deleted or handled by error logic)
-            storage_count = self.storage.delete_messages(chat_id, message_ids)
             logger.info(
-                f"Successfully deleted {deleted_count} messages from Telegram and {storage_count} from DB."
+                "Successfully deleted %s messages from Telegram; "
+                "local storage was preserved.",
+                deleted_count,
             )
             return deleted_count
 

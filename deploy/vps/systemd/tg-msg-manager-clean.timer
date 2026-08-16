@@ -2,7 +2,7 @@
 Description=Run tg-msg-manager clean daily
 
 [Timer]
-OnCalendar=*-*-* 04:30:00 Europe/Kyiv
+OnCalendar=*-*-* 04:35:00 Europe/Kyiv
 AccuracySec=1s
 RandomizedDelaySec=0
 Unit=tg-msg-manager-clean.service
